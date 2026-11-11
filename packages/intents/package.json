@@ -1,0 +1,29 @@
+{
+  "name": "@ach/intents",
+  "version": "4.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "../client/node_modules/.bin/tsc -p tsconfig.json",
+    "test": "npm run build && node --test --experimental-test-isolation=none test/*.test.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./owner": {
+      "types": "./dist/owner.d.ts",
+      "import": "./dist/owner.js"
+    }
+  },
+  "peerDependencies": {
+    "@ach/client": "^4.0.0"
+  }
+}
