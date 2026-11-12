@@ -20,7 +20,7 @@ Sophistication comes from typography, alignment, clear financial meaning and use
 
 ## Public site
 
-Lead with “The agent economy needs a clearing house.” Explain capital fragmentation and payment commitments in ordinary language. A labelled interactive three-agent example shows bills of 100, 80 and 60 clearing with 40; switching to A and B requires 100 and leaves two bills outstanding.
+Lead with “The agent economy needs a clearing house.” Explain capital fragmentation and payment commitments in ordinary language. A labelled interactive three-agent example shows bills of 100, 100 and 80 clearing with 20; switching to A and B requires 100 and leaves two bills outstanding.
 
 Explain netting before introducing CLS, 2008 and 2020. Attribute CLS’s funding reduction to CLS, distinguish its PvP settlement from ACH’s one-token invoice clearing, and describe agent liquidity stress as a possible future scenario. Netting does not resolve insolvency or guarantee service quality.
 
@@ -66,6 +66,6 @@ History presents only records available from the current service snapshot. Missi
 
 ## Delivery scope
 
-Complete visual and browser verification, preview deployment and production checks using the separate revision-2 vault and its existing service identities. Publish the reviewed `ach-v4` source and verified application under the resumed authorization, keeping both repositories private and excluding secrets and private state. Preserve the earlier deployment and its financial records.
+The production application uses the separate revision-2 vault and its existing service identities. Preview, production and public smoke each pass 28 browser checks; the final hosted journey passes 52. The [current validation record](docs/v4/validation-20261112.md) includes the financial checks and reviewed desktop/mobile screenshots.
 
-The user authorized the funded-workflow corrections and their release. Retain the historical audit, record current verification separately, and complete the hosted acceptance journey before claiming the release verified.
+The reviewed `ach-v4` source and release evidence are published privately under the resumed authorization. Both repositories remain private, and credentials, private work and browser keys stay in their private stores. Preserve the earlier deployment, financial records and historical audit. Mainnet transfer execution and an independent security audit remain unverified.

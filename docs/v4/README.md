@@ -2,7 +2,7 @@
 
 The public application is [ach-rosy.vercel.app](https://ach-rosy.vercel.app). Its current runtime uses workflow revision 2, vault `ach-vault-v4r2-e53eefae.testnet` and settlement token `ach-usdc-v4r2-e53eefae.testnet`. The [latest validation record](validation-20261112.md) records current source, browser and publication status. The [November 10 archive](history/20261110/README.md) preserves the preceding deployment, browser evidence, live work and gas measurements.
 
-The [workflow corrections](workflow-fixes.md) describe the funded revision-2 protocol. The [November 11 review](security-review-20261111.md) records its earlier local checkpoint; subsequent verification and deployment are recorded separately. Revision-2 source has been published to the private repository and the candidate is serving production. Final public evidence is exported only after the complete current hosted journey and a subsequent independent backing check. Provisioning and service-start scripts require revision 2 and fresh matching account names, and reject the historical namespace before funding or replacing code.
+The [workflow corrections](workflow-fixes.md) describe the funded revision-2 protocol. The [November 11 review](security-review-20261111.md) records its earlier local checkpoint. Revision-2 source and the [completed release evidence](release.json) are published privately, and the verified application is serving production. The final hosted journey passes 52 checks; the subsequent independent check reconciles 11.96 tUSDC in custody with ledger claims and zero pending withdrawals. Provisioning and service-start scripts require revision 2 and fresh matching account names, and reject the historical namespace before funding or replacing code.
 
 Revision 2 removes the two-brief allowance and supports repeat briefs plus fresh test workspaces. Settings reopens earlier active workspaces in the same ownership family during their 24-hour sessions. One brief runs at a time per workspace, with a five-second admission interval. The default shared budget reserves at most 2,000 planner calls per UTC day; each admitted brief gets at most two attempts across retries and restarts. Workspace creation has a ten-second interval and native sponsorship reserves 2 testnet NEAR per workspace within a 26 NEAR daily budget. Wallet, private-execution and persistent-storage budgets remain bounded.
 
@@ -10,17 +10,16 @@ The free deployment uses hosted test identities and a test token with no monetar
 
 ## Durable deployment state
 
-Historical read-only checks use the existing deployment namespace and matching
-release source. Preserve that namespace; use a separate one for revision 2:
+Current backing and browser checks use the existing revision-2 deployment namespace:
 
 ```sh
-npm run test:live -- --private-root .local/v4-release-20261110 --verify-only
-npm run test:e2e -- --private-root .local/v4-release-20261110 \
+npm run test:live -- --private-root .local/v4r2-release-20261111 --verify-only
+npm run test:e2e -- --private-root .local/v4r2-release-20261111 \
   --url https://ach-rosy.vercel.app --reuse-live --smoke \
-  --output .local/v4-release-20261110/browser-operator-check
+  --output .local/v4r2-release-20261111/browser-operator-check
 ```
 
-The namespace contains its authoritative `deployment.json`, private identities, `services.env`, transaction journals, and SQLite stores. Preserve these files across restarts. The copy under `docs/v4` is public release evidence, not a credential bundle.
+The namespace contains its authoritative `deployment.json`, private identities, `services.env`, transaction journals, and SQLite stores. Preserve these files across restarts. The copy under `docs/v4` is public release evidence, not a credential bundle. Historical checks use the earlier namespace with its matching release source and pinned vault; the current public app uses revision 2.
 
 The historical supervised service is `ach-v4.service` under the user's systemd manager. Restart it only with source and artifacts matching its recorded release. The revised services cannot run against the old manifest. The current candidate uses its separate `ach-v4r2-e53eefae.service` unit and retains its existing identities and durable stores.
 
@@ -36,11 +35,11 @@ The web server resolves a signed HTTPS gateway record pinned to this network and
 
 `scripts/v4/finalize.mjs` verifies current browser reports, runtime identity, source artifacts, domain assignment, and final token backing before exporting public evidence. It includes every `web/lib` file in the source fingerprint and keeps the earlier deployment fingerprint. Private browser keys, invoices, prompts, and credentials stay in the private namespace. Failed reports remain available for review.
 
-A revision-2 release also supplies the current local correction manifest through `--workflow-review`. The finalizer checks its completed suites, current source hashes and exact deployed vault artifact, and rejects historical flaw-reproduction evidence or browser reports with remaining workflow findings. Its hosted journey must prove a third identical brief, fresh-workspace trading, and reopening the original History and private results. Current public/private live work, private-worker verification, maximum-round gas measurements and a backing check after the hosted money actions are still required. The local correction manifest does not satisfy these live checks.
+A revision-2 release also supplies the current correction manifest through `--workflow-review`. The finalizer checks its completed suites, current source hashes and exact deployed vault artifact, and rejects historical flaw-reproduction evidence or browser reports with remaining workflow findings. Its hosted journey must prove a third identical brief, fresh-workspace trading, and reopening the original History and private results. It also checks current public/private live work, private-worker verification, maximum-round gas measurements and independent backing after the hosted money actions. The completed release combines these local and live results.
 
 After source publication, pass the verified GitHub context through `--git-context` to deployment and finalization. Its publication record binds `NSEVEjk0/ach-v4`, the exact commit, the current source fingerprint and the verification time. Uncommitted or mismatched source is rejected. Runtime configuration and exported release records derive their publication status from that evidence.
 
-The interface release stores its deployment requests and hosted browser reports under `web-redesign-release`, preserving the earlier release. Its backing check follows its hosted money actions, and its reports include text-contrast checks. The finalizer exports browser `workflow_findings` and a sanitized fresh-session observation, without publishing the browser session credentials or private snapshot. The [workflow review](workflow-audit.md) records reproduced flaws in that published baseline. Its financial and coordinator corrections are now implemented locally; the review remains historical evidence of the unchanged hosted version.
+The interface release stores its deployment requests and hosted browser reports under `web-redesign-release`, preserving earlier attempts. Its backing check follows its hosted money actions, and its reports include text-contrast checks. The finalizer exports browser findings and sanitized release metadata while retaining browser credentials and private snapshots in the private namespace. The [workflow review](workflow-audit.md) records reproduced flaws in the historical November 10 baseline. The current production app uses the funded corrections; historical records remain in their separate archive.
 
 The historical November 10 hosted journey passed 43 financial and interface checks while recording W06: the public three-bill group settled in two rounds moving 0.200 tUSDC rather than one 0.020 round. Its wallet setup took 187,848 ms in that one session. The historical isolated workflow suite passed 18 checks and reproduced W09, selective collection of an incoming bill followed by owner withdrawal while the debtor's accepted outgoing bill stayed unpaid. These results describe the preceding protocol; the [correction record](workflow-fixes.md) and current validation cover the funded replacement.
 
@@ -55,4 +54,4 @@ Gross private invoice contents are encrypted before leaving their service party.
 Intents route quotes are live mainnet previews. Owner routing and destination verification have automated coverage, but no mainnet transfer evidence is claimed. Real execution needs separate funding, deployment, and owner source signers.
 ## Verification continuation — 12 November 2026
 
-The [latest validation record](validation-20261112.md) completes the interrupted automated and local browser reruns and records the corrected live candidate. The [November 10 archive](history/20261110/README.md) preserves the preceding deployment and release evidence.
+The [latest validation record](validation-20261112.md) records 256 automated tests, three local 66-check browser passes, completed hosted acceptance and the final independent backing check. The reviewed [desktop landing page](screenshots/landing-1440.png) and [mobile wallet](screenshots/wallets-390.png) have [capture hashes and runtime identity](screenshots/manifest.json). The [November 10 archive](history/20261110/README.md) preserves the preceding deployment and release evidence.
