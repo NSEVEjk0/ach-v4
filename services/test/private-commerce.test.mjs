@@ -65,6 +65,31 @@ test('unknown private broadcasts remain pending and reconcile existing failed wo
  }finally{h.cleanup();}
 });
 
+test('committed private work reopens its original encrypted result after a restart and timeout without another worker charge',async()=>{
+ const h=await setup({privateMode:true});try{
+  const id='e'.repeat(32),key=await h.actors.get('research').encryptionKey(h.session);
+  const sealed=encryptedBrief(h.config,h.session,id,key.public_key,'Recover private workload 92713',[{label:'Private requests',value:42}]);
+  const request={request_id:id,mode:'report',budget:'300000',privacy:'private',sealed_brief:sealed.sealed_brief};
+  h.coordinator.setClearingPolicy(h.session,{mode:'manual'});
+  const run=h.coordinator.agents.runBrief;let original;
+  h.coordinator.agents.runBrief=async(...args)=>{original=await run(...args);throw new TypeError('fetch failed');};
+  await assert.rejects(h.coordinator.run(h.session,request),/fetch failed/);
+  const failed=h.store.job('run-'+id);failed.state='FAILED';failed.error='SERVICE_OR_CHAIN_UNAVAILABLE';failed.failures=3;h.store.saveJob(failed);
+  const charged=h.workerRuns.length;
+  h.coordinator.agents.runBrief=run;const restarted=h.restart();h.chain.now=failed.created_at_ms+restarted.jobTimeoutMs+1;
+  assert.deepEqual(await restarted.run(h.session,request),original);
+  assert.equal(sealed.open(original).chart.audit.valid,true);assert.equal(h.workerRuns.length,charged);
+  const recovered=h.store.job(failed.id);assert.equal(recovered.state,'COMPLETE');assert.equal(recovered.payment_committed,true);assert.equal(recovered.failures,3);
+  assert.equal(h.store.db.prepare('SELECT requests_reserved FROM inference_days').get().requests_reserved,2);
+  const snapshot=await restarted.snapshot(h.session);
+  assert.equal(snapshot.funding_groups.length,1);assert.equal(snapshot.rounds.length,1);assert.equal(snapshot.private_invoices.length,3);
+  assert.equal(snapshot.jobs.find(job=>job.id===failed.id).result,null);assert.ok(!JSON.stringify(snapshot).includes('92713'));
+  const cleared=await restarted.clear(h.session,{request_id:'f'.repeat(32),privacy:'private',selected_accounts:h.session.participants.map(p=>p.account_id),invoice_ids:snapshot.private_invoices.map(invoice=>invoice.nullifier)});
+  assert.equal(cleared.round.status,'SETTLED');assert.equal(cleared.round.net_settlement_volume,'20000');assert.equal(h.workerRuns.length,charged);
+  assert.deepEqual(await restarted.run(h.session,request),original);
+ }finally{h.cleanup();}
+});
+
 test('private deliveries become durable accepted receipts before clearing, survive key rotation, and remain encrypted',async()=>{
  const h=await setup({privateMode:true});try{
   const id='88888888888888888888888888888888',secret='Confidential workload account 92713',labels=[{label:'Private customer cohort 92713',value:91},{label:'Private research requests 64281',value:64}];

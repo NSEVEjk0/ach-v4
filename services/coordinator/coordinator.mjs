@@ -49,6 +49,21 @@ export class Coordinator{
   if(job.state==='FAILED'&&this.clock()<job.created_at_ms+this.jobTimeoutMs&&(confirmationPending(job.error)||(job.error==='AI_PLAN_INVALID'&&(job.attempts??0)<3)||(retryable(job.error)&&((job.failures??0)<3||privateConfirmation)))){job.state='WAITING';delete job.error;this.store.saveJob(job);this.invalidateSnapshot(session.id);}
   return job;
  }
+ async recoverCommittedRun(session,job,knownGroup){
+  if(job.state!=='FAILED'||!retryable(job.error))return job;
+  const research=session.participants.find(p=>p.kind==='research');
+  if(!research)return job;
+  const id=v4PurchaseGroupId(this.config,research.account_id,job.payload.request_id);
+  let group=knownGroup;
+  if(!group){try{group=await(await this.getClient()).purchaseGroup(id);}catch(error){if(/PURCHASE_GROUP_NOT_FOUND/.test(error.message))return job;throw error;}}
+  if(group.input.id!==id||!['READY','SETTLED'].includes(group.status)||!group.round_id||group.input.positions.some(p=>!session.participants.some(member=>member.account_id===p.account_id)))return job;
+  const current=this.store.job(job.id);
+  if(current.state!=='FAILED'||!retryable(current.error))return current;
+  // The original payment is irrevocably committed. Recover its existing
+  // deliverable even after the UI deadline, without starting another order.
+  current.state='WAITING';current.payment_committed=true;current.retry_at_ms=this.clock();delete current.error;
+  this.store.saveJob(current);this.invalidateSnapshot(session.id);return current;
+ }
  prepareClear(session,request,{automatic=false}={}){
   if(session.state&&session.state!=='READY')throw new Error('SESSION_PROVISIONING');
   if(!request||!/^[a-f\d-]{16,40}$/.test(request.request_id)||!['public','private'].includes(request.privacy??'public')||!Array.isArray(request.invoice_ids)||request.invoice_ids.length<1||request.invoice_ids.length>48||request.invoice_ids.some(id=>typeof id!=='string'||!/^[a-zA-Z0-9_.-]{1,96}$/.test(id))||new Set(request.invoice_ids).size!==request.invoice_ids.length)throw new Error('INVALID_CLEARING_REQUEST');
@@ -65,6 +80,7 @@ export class Coordinator{
  async run(session,request){
   const id='run-'+request.request_id;
   let job=this.prepareRun(session,request);if(job.state==='COMPLETE')return job.result;
+  job=await this.recoverCommittedRun(session,job);
   if(job.state==='FAILED')throw new Error(job.error??'SERVICE_UNAVAILABLE');
   if(this.running.has(id))return this.running.get(id);
   const task=(async()=>{
@@ -73,7 +89,7 @@ export class Coordinator{
    try{
     const result=await this.agents.runBrief(session,request);job={...job,state:'COMPLETE',result};this.store.saveJob(job);this.invalidateSnapshot(session.id);
     const latest=this.store.session(session.id)??session;latest.last_job_id=id;this.store.updateSession(latest);if(result.round_id)this.appendRound(latest,result.round_id);this.store.event(session.id,'brief-completed',id,{mode:request.mode,private:request.privacy==='private'});return result;
-   }catch(error){const code=jobError(error),processing=confirmationPending(code),failures=(job.failures??0)+(processing?0:1),withinDeadline=this.clock()<job.created_at_ms+this.jobTimeoutMs;job={...job,failures,state:withinDeadline&&retryable(code)&&(processing||failures<3)?'WAITING':'FAILED',error:code,retry_at_ms:this.clock()+10000};this.store.saveJob(job);this.invalidateSnapshot(session.id);throw error;}
+   }catch(error){const code=jobError(error),processing=confirmationPending(code),failures=(job.failures??0)+(processing?0:1),withinDeadline=this.clock()<job.created_at_ms+this.jobTimeoutMs||job.payment_committed===true;job={...job,failures,state:withinDeadline&&retryable(code)&&(processing||failures<3)?'WAITING':'FAILED',error:code,retry_at_ms:this.clock()+10000};this.store.saveJob(job);this.invalidateSnapshot(session.id);throw error;}
   })().finally(()=>this.running.delete(id));this.running.set(id,task);return task;
  }
  async privateInvoices(session){
@@ -311,6 +327,13 @@ export class Coordinator{
     else if(job.id.startsWith('clear-')&&!this.running.has(job.id)&&(!job.automatic||(this.store.session(session.id)?.clearing_policy?.mode??'automatic')==='automatic')){const r={...job.payload,privacy:job.payload.privacy==='encrypted'?'private':job.payload.privacy};await this.clear(session,r,{automatic:Boolean(job.automatic)}).catch(()=>{});}
    }
    const data=await this.snapshot(this.store.session(session.id)??session);
+   for(const job of this.store.jobs(session.id).filter(j=>j.id.startsWith('run-')&&j.state==='FAILED')){
+    const research=session.participants.find(p=>p.kind==='research');
+    const group=research&&(data.funding_groups??[]).find(g=>g.input.id===v4PurchaseGroupId(this.config,research.account_id,job.payload.request_id));
+    if(!group||!['READY','SETTLED'].includes(group.status))continue;
+    const recovered=await this.recoverCommittedRun(session,job,group);
+    if(recovered.state==='WAITING'&&!this.running.has(job.id)){const r={...job.payload,privacy:job.payload.privacy==='encrypted'?'private':job.payload.privacy};void this.run(session,r).catch(()=>{});}
+   }
    const automatic=()=> (this.store.session(session.id)?.clearing_policy?.mode??'automatic')==='automatic';
    for(const group of data.funding_groups??[])if(['COLLECTING','FUNDED'].includes(group.status)&&group.input.deadline_ms<=this.clock()){
     try{await client.expirePurchaseGroup(group.input.id);this.store.eventOnce(session.id,'purchase-group-expired',group.input.id,{private:group.input.private});this.invalidateSnapshot(session.id);}catch{}

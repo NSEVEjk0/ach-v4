@@ -40,6 +40,25 @@ test('session creation keeps tokens in secure HTTP-only cookies and does not exp
  });
 });
 
+test('reopening a workspace avoids financial RPC reads and never replaces its cookie during an outage',async()=>{
+ const headers={cookie:'ach-v4-session='+sessionToken};
+ for(const status of [200,503,429,'timeout']){
+  let calls=0;await isolated(async(url,options)=>{
+   calls++;assert.equal(new URL(url).pathname,'/session');assert.equal(options.method??'GET','GET');assert.equal(options.headers.Authorization,'Bearer '+sessionToken);
+   if(status==='timeout')throw new Error('fetch failed');
+   return new Response(JSON.stringify(status===200?{session}:{error:'RPC_UNAVAILABLE'}),{status});
+  },async()=>{
+   const reply=await request('session',{headers});assert.equal(reply.status,status==='timeout'?503:status);assert.equal(calls,1);assert.equal(reply.headers.get('set-cookie'),null);
+   assert.deepEqual(await reply.json(),status===200?{ok:true}:{error:status==='timeout'?'SERVICE_UNAVAILABLE':'RPC_UNAVAILABLE'});
+  });
+ }
+ let calls=0;await isolated(async(url,options)=>{
+  calls++;assert.equal(new URL(url).pathname,'/session');
+  if(calls===1){assert.equal(options.method??'GET','GET');return new Response(JSON.stringify({error:'SESSION_EXPIRED'}),{status:401});}
+  assert.equal(options.method,'POST');return new Response(JSON.stringify({token:sessionToken,session}));
+ },async()=>{const reply=await request('session',{headers});assert.equal(reply.status,200);assert.equal(calls,2);assert.ok(reply.headers.get('set-cookie')?.includes('HttpOnly'));});
+});
+
 test('local sponsorship ignores spoofed forwarding headers; platform requests require a valid normalized IP',async()=>{
  const identities=[];await isolated(async(_url,options)=>{identities.push(JSON.parse(options.body).ip_hash);return new Response(JSON.stringify({token:sessionToken,session}));},async()=>{
   await request('session',{headers:{'x-forwarded-for':'192.0.2.1'}});await request('session',{headers:{'x-forwarded-for':'198.51.100.2'}});assert.equal(identities[0],identities[1]);

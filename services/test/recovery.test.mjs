@@ -75,3 +75,24 @@ test('an unavailable earlier workspace cannot block later settlement or expired 
   }finally{h.cleanup();}
  }
 });
+
+test('already committed work recovers its original result after the UI deadline without another payment or inference',async()=>{
+ const h=await setup();try{
+  const request=brief('6'),run=h.coordinator.agents.runBrief,actor=h.actors.get('research'),plan=actor.planner;
+  let plans=0,original;
+  actor.planner=async(...args)=>{plans++;return plan(...args);};
+  h.coordinator.agents.runBrief=async(...args)=>{original=await run(...args);throw new TypeError('fetch failed');};
+  await assert.rejects(h.coordinator.run(h.session,request),/fetch failed/);
+  const failed=h.store.job('run-'+request.request_id);failed.state='FAILED';failed.error='SERVICE_OR_CHAIN_UNAVAILABLE';failed.failures=3;h.store.saveJob(failed);
+  h.coordinator.agents.runBrief=run;h.chain.now=failed.created_at_ms+h.coordinator.jobTimeoutMs+1;
+  await h.coordinator.tick();await Promise.all([...h.coordinator.running.values()]);
+  const snapshot=await h.coordinator.snapshot(h.session),job=h.store.job(failed.id);
+  assert.equal(job.state,'COMPLETE');assert.equal(job.failures,3);assert.equal(job.payment_committed,true);
+  assert.equal(job.result.chart.sha256,original.chart.sha256);assert.equal(plans,1);
+  assert.equal(snapshot.funding_groups.length,1);assert.equal(snapshot.invoices.length,3);assert.equal(snapshot.rounds.length,1);
+  assert.equal(snapshot.rounds[0].status,'SETTLED');assert.equal(snapshot.rounds[0].net_settlement_volume,'20000');
+  assert.equal(h.store.db.prepare('SELECT requests_reserved FROM inference_days').get().requests_reserved,2);
+  assert.equal(h.store.eventPage(h.session.id).items.filter(e=>e.kind==='round-settled').length,1);
+  assert.equal((await h.coordinator.run(h.session,request)).chart.sha256,original.chart.sha256);
+ }finally{h.cleanup();}
+});

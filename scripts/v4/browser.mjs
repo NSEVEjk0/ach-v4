@@ -121,7 +121,7 @@ async function liveJourney(page,context){
   const {StateStore}=await import('../../services/lib/store.mjs'),store=new StateStore(privatePath('coordinator.sqlite'));
   try{for(const job of store.jobs(initial.session.id).filter(j=>j.id.startsWith('run-'))){const privacy=job.payload.privacy==='encrypted'?'private':job.payload.privacy;seen[privacy]={...job.payload,privacy};}}finally{store.close();}
  }
- page.on('request',request=>{if(new URL(request.url()).pathname==='/api/v4/run'){const body=request.postDataJSON();seen[body.privacy]=body;writeFileSync(requestFile,JSON.stringify(seen),{mode:0o600});}});
+ page.on('request',request=>{const route=new URL(request.url()).pathname;if(request.method()==='POST'&&['/api/v4/run','/api/v4/withdraw','/api/v4/deposit'].includes(route)){const body=request.postDataJSON();seen[route==='/api/v4/run'?body.privacy:route.split('/').at(-1)]=body;writeFileSync(requestFile,JSON.stringify(seen),{mode:0o600});}});
  const run=async privacy=>{
   await navigateWorkspace(page,'Work');
   await page.locator('#brief').fill(privacy==='private'?'Private client workload 92713; create an audited chart.':'Create an audited chart of the supplied service workloads.');
@@ -192,10 +192,31 @@ async function liveJourney(page,context){
  let settled=await run('public');await navigateWorkspace(page,'Work');await layout(page,'public-delivery',1440);await layout(page,'public-delivery',390,844);
  const[download]=await Promise.all([page.waitForEvent('download'),page.getByRole('link',{name:'Download SVG',exact:true}).click()]);assert.equal(download.suggestedFilename(),'ach-chart.svg');check('artifact-download');
  const audit=settled.session.participants.find(p=>p.kind==='audit');await navigateWorkspace(page,'Wallets');await page.locator('#wallet-scope').selectOption(audit.account_id);
- await page.locator('.wallet-actions input').first().fill('0.01');await page.getByRole('button',{name:'Withdraw test funds',exact:true}).click();
- await until(()=>snapshot(context),s=>s.external_balances.find(b=>b.account_id===audit.account_id)?.amount==='10000','browser-withdrawal');check('live-browser-withdrawal');
- await page.getByRole('button',{name:'Deposit from agent account',exact:true}).waitFor({timeout:30000});await page.locator('.redeposit-form input').fill('0.01');await page.getByRole('button',{name:'Deposit from agent account',exact:true}).click();
- await until(()=>snapshot(context),s=>s.external_balances.find(b=>b.account_id===audit.account_id)?.amount==='0','browser-redeposit');check('live-browser-authenticated-redeposit');
+ const ownerId=(route,request)=>route==='withdraw'?'withdraw:withdraw-'+request.request_id:'deposit:'+request.request_id;
+ const ownerTransfer=async(route,click,phase)=>{
+  const resumed=Boolean(seen[route]);if(!resumed)await click();
+  await until(async()=>seen[route],Boolean,phase+'-submission',30000);
+  const request=structuredClone(seen[route]);assert.equal(request.account_id,audit.account_id);assert.equal(request.amount,'10000');
+  let retries=0,nextRetry=Date.now()+(resumed?0:15000);
+  const confirmed=await until(async()=>{
+   const state=await snapshot(context),operation=state.owner_operations?.find(op=>op.id===ownerId(route,request));
+   if(operation?.state==='CONFIRMED'){assert.equal(operation.account_id,audit.account_id);assert.equal(operation.amount,'10000');assert.equal(operation.evidence,'near_final');return state;}
+   if(retries<3&&Date.now()>=nextRetry){
+    retries++;nextRetry=Date.now()+15000;
+    const response=await context.request.post(base+'/api/v4/'+route,{data:request,timeout:30000}),body=await response.json();
+    assert.ok(response.ok()||[429,503].includes(response.status())&&['RPC_UNAVAILABLE','SERVICE_UNAVAILABLE','SERVICE_OR_CHAIN_UNAVAILABLE','TRANSACTION_BROADCAST_UNKNOWN','SERVICE_CONFIRMATION_UNKNOWN'].includes(body.error),'BROWSER_OWNER_RETRY_REJECTED:'+response.status()+':'+(body.error??'UNKNOWN_ERROR'));
+   }
+   return null;
+  },Boolean,phase);
+  return{state:confirmed,request,resumed,retries};
+ };
+ const withdrawn=await ownerTransfer('withdraw',async()=>{await page.locator('.wallet-actions input').first().fill('0.01');await page.getByRole('button',{name:'Withdraw test funds',exact:true}).click();},'browser-withdrawal');
+ const redeposited=seen.deposit&&withdrawn.state.owner_operations?.some(op=>op.id===ownerId('deposit',seen.deposit)&&op.state==='CONFIRMED');
+ if(!redeposited)assert.equal(withdrawn.state.external_balances.find(b=>b.account_id===audit.account_id)?.amount,'10000');
+ check('live-browser-withdrawal',{request_id:withdrawn.request.request_id,resumed:withdrawn.resumed,exact_request_retries:withdrawn.retries});
+ const deposited=await ownerTransfer('deposit',async()=>{await page.getByRole('button',{name:'Deposit from agent account',exact:true}).waitFor({timeout:30000});await page.locator('.redeposit-form input').fill('0.01');await page.getByRole('button',{name:'Deposit from agent account',exact:true}).click();},'browser-redeposit');
+ assert.equal(deposited.state.external_balances.find(b=>b.account_id===audit.account_id)?.amount,'0');
+ check('live-browser-authenticated-redeposit',{request_id:deposited.request.request_id,resumed:deposited.resumed,exact_request_retries:deposited.retries});
  if(config.private?.enabled)settled=await run('private');else throw new Error('LIVE_PRIVATE_MODE_REQUIRED');
  if(config.workflow_revision===2){
   const previousPublic=seen.public.request_id,completed=settled.jobs.filter(job=>job.state==='COMPLETE').length;

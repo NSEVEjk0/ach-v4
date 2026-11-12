@@ -20,7 +20,13 @@ async function proxy(req:NextRequest,context:{params:Promise<{path:string[]}>}){
  if(['sessions','session-new','session-switch'].includes(route)&&!/^[a-f\d]{64}$/.test(session??''))return NextResponse.json({error:'SESSION_REQUIRED'},{status:401});
  try{
   const base=await coordinatorUrl();
-  if(route==='session'&&session){const existing=await fetch(new URL('/snapshot',base),{headers:{'x-ach-service-token':token,Authorization:`Bearer ${session}`},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(12000)});if(existing.ok)return NextResponse.json({ok:true});}
+  if(route==='session'&&session){
+   // Session ownership is durable local state. Reopening a workspace must
+   // not depend on RPC reads or silently replace it during a chain outage.
+   const existing=await fetch(new URL('/session',base),{headers:{'x-ach-service-token':token,Authorization:`Bearer ${session}`},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(12000)});
+   if(existing.ok)return NextResponse.json({ok:true});
+   if(existing.status!==401){const failed=await boundedJson(existing) as Record<string,unknown>;const error=typeof failed.error==='string'&&/^[A-Z_\d]+$/.test(failed.error)?failed.error:'SERVICE_UNAVAILABLE';return NextResponse.json({error},{status:existing.status,headers:{'Cache-Control':'no-store'}});}
+  }
   if(route==='session'||route==='session-new'){
    // Trust the platform's normalized proxy header only in that platform.
    // A direct/local server shares a conservative bucket instead of accepting

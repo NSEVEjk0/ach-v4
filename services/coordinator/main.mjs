@@ -25,6 +25,7 @@ serve({port:Number(new URL(config.services.coordinator).port),token,handle:async
  if(url.pathname==='/verify-private-receipt'&&req.method==='POST'){const a=await readJson(req),s=store.session(a.session_id);if(!s||s.expires_at_ms<=Date.now())throw new Error('SESSION_EXPIRED');return coordinator.verifyPrivateReceipt(s,a);}
  if(url.pathname==='/prepare-private-group'&&req.method==='POST'){const a=await readJson(req),s=store.session(a.session_id);if(!s||s.expires_at_ms<=Date.now())throw new Error('SESSION_EXPIRED');return coordinator.preparePrivateGroup(s,a);}
  const bearer=sessionBearer(req),session=coordinator.authenticate(bearer);
+ if(url.pathname==='/session'&&req.method==='GET')return{session:{id:session.id,state:session.state??'READY',expires_at_ms:session.expires_at_ms}};
  if(url.pathname==='/sessions'&&req.method==='GET')return{sessions:store.workspaceSessions(session)};
  if(['/session-new','/session-switch'].includes(url.pathname)&&req.method==='POST')return serviceFetch(config.services.demo,token)(url.pathname,await readJson(req),bearer);
  if(url.pathname==='/intents/tokens'&&req.method==='GET')return intents.tokens();
@@ -35,7 +36,7 @@ serve({port:Number(new URL(config.services.coordinator).port),token,handle:async
  if(url.pathname==='/clearing-policy'&&req.method==='POST')return coordinator.setClearingPolicy(session,await readJson(req));
  if(url.pathname==='/run'&&req.method==='POST'){
   const request=await readJson(req);if(!/^[a-f\d-]{16,40}$/.test(request.request_id))throw new Error('INVALID_REQUEST_ID');
-  const old=coordinator.prepareRun(session,request);if(old.state==='COMPLETE')return{state:'COMPLETE',job_id:old.id};
+  const old=await coordinator.recoverCommittedRun(session,coordinator.prepareRun(session,request));if(old.state==='COMPLETE')return{state:'COMPLETE',job_id:old.id};
   if(old.state==='FAILED')throw new Error(old.error??'SERVICE_UNAVAILABLE');
   void coordinator.run(session,request).catch(()=>{});return{state:'STARTED',job_id:'run-'+request.request_id};
  }
