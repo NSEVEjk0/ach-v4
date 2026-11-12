@@ -10,7 +10,8 @@ loadPrivateEnvironment();
 const config=JSON.parse(readFileSync(manifestPath,'utf8')),web=path.join(repoRoot,'web'),output=privatePath('web-release');
 requireServiceLayout(config);
 mkdirSync(output,{recursive:true,mode:0o700});
-const stateFile=path.join(output,'deployment.json'),state=existsSync(stateFile)?JSON.parse(readFileSync(stateFile,'utf8')):{vault:config.vault,repository_pushed:false,started_at:new Date().toISOString()};
+const stateFile=path.join(output,'deployment.json'),state=existsSync(stateFile)?JSON.parse(readFileSync(stateFile,'utf8')):{vault:config.vault,started_at:new Date().toISOString()};
+state.repository_pushed=config.source?.repository_pushed===true;
 assert.equal(state.vault,config.vault,'WEB_RELEASE_NAMESPACE_MISMATCH');
 const save=()=>writeFileSync(stateFile,JSON.stringify(state,null,2),{mode:0o600});
 async function command(args,{input,env=process.env,label=args[0]}={}){
@@ -39,7 +40,7 @@ async function backup(){
  if(!state.previous_production){const listed=await command(['project','ls','--json'],{label:'previous-production'});const json=JSON.parse(listed.stdout);const project=json.projects.find(p=>p.id==='prj_zrf0MeNBv2Cdj76I7HK09gaCBZVa');assert.ok(project,'EXPECTED_VERCEL_PROJECT_REQUIRED');state.previous_production=project.latestProductionUrl;save();}
 }
 async function environment(target){
- const values={ACH_V4_SERVICE_TOKEN:process.env.ACH_V4_SERVICE_TOKEN,ACH_V4_DISCOVERY_URL:config.gateway.discovery_url,ACH_V4_DISCOVERY_KEY:config.gateway.signing_key,ACH_V4_NETWORK:config.network,ACH_V4_VAULT:config.vault,ACH_V4_COORDINATOR_URL:config.services.coordinator};
+ const values={ACH_V4_SERVICE_TOKEN:process.env.ACH_V4_SERVICE_TOKEN,ACH_V4_DISCOVERY_URL:config.gateway.discovery_url,ACH_V4_DISCOVERY_KEY:config.gateway.signing_key,ACH_V4_NETWORK:config.network,ACH_V4_VAULT:config.vault,ACH_V4_COORDINATOR_URL:config.services.coordinator,ACH_V4_INTENTS_QUOTE_PREVIEWS:String(config.intents?.dry_quotes_enabled===true)};
  for(const[name,value]of Object.entries(values)){
   assert.ok(value,'MISSING_WEB_RUNTIME_CONFIGURATION');
   await command(['env','add',name,target,'--project','ach','--force','--yes',name==='ACH_V4_SERVICE_TOKEN'?'--sensitive':'--no-sensitive'],{input:value,label:'configure-'+target+'-'+name.toLowerCase()});
@@ -67,7 +68,7 @@ async function browser(url,smoke=true){
 }
 try{
  await discovery();await backup();state.gateway_verified_at=new Date().toISOString();save();
- if(process.argv.includes('--prepare')){console.log(JSON.stringify({web_preparation:'passed',public_cutover:false,repository_pushed:false}));process.exit(0);}
+ if(process.argv.includes('--prepare')){console.log(JSON.stringify({web_preparation:'passed',public_cutover:false,repository_pushed:config.source?.repository_pushed===true}));process.exit(0);}
  const live=JSON.parse(readFileSync(path.join(path.dirname(manifestPath),'live.json'),'utf8'));
  assert.ok(live.public_flow&&live.private_flow&&live.code_hash===config.code_hash,'VERIFIED_LIVE_PUBLIC_AND_PRIVATE_FLOWS_REQUIRED');
  assert.ok(config.private.private_round_verified,'VERIFIED_PRIVATE_CAPABILITY_REQUIRED');
@@ -80,11 +81,11 @@ try{
  const bypass=parseEnv(readFileSync(previewEnvironment,'utf8')).VERCEL_AUTOMATION_BYPASS_SECRET;
  if(bypass)process.env.ACH_V4_PREVIEW_BYPASS=bypass;
  await browser(preview);state.preview_browser_verified_at=new Date().toISOString();save();
- if(process.argv.includes('--preview-only')){console.log(JSON.stringify({preview,verification:'passed',public_cutover:false,repository_pushed:false}));process.exit(0);}
+ if(process.argv.includes('--preview-only')){console.log(JSON.stringify({preview,verification:'passed',public_cutover:false,repository_pushed:config.source?.repository_pushed===true}));process.exit(0);}
  await environment('production');
  const production=deployedUrl(await command(['deploy','--prod','--skip-domain','--yes','--project','ach','--json'],{label:'production-staged-deploy'}));state.production=production;save();await verifyHosted(production);await browser(production);state.production_browser_verified_at=new Date().toISOString();save();
  await command(['promote',production,'--yes'],{label:'production-promote'});
  await verifyHosted('https://ach-rosy.vercel.app');await browser('https://ach-rosy.vercel.app');
  state.public_url='https://ach-rosy.vercel.app';state.promoted_at=new Date().toISOString();save();
- console.log(JSON.stringify({web_deployed:state.public_url,preview,exact_vault_verified:config.vault,repository_pushed:false}));
-}catch(error){state.failure={type:error.name,code:error.message};save();console.error(JSON.stringify({web_deployment:'failed',reason:error.message,repository_pushed:false}));process.exitCode=1;}
+ console.log(JSON.stringify({web_deployed:state.public_url,preview,exact_vault_verified:config.vault,repository_pushed:config.source?.repository_pushed===true}));
+}catch(error){state.failure={type:error.name,code:error.message};save();console.error(JSON.stringify({web_deployment:'failed',reason:error.message,repository_pushed:config.source?.repository_pushed===true}));process.exitCode=1;}

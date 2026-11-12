@@ -39,6 +39,12 @@ async function proxy(req:NextRequest,context:{params:Promise<{path:string[]}>}){
   const response=await fetch(target,{method:req.method,headers:{'Content-Type':'application/json','x-ach-service-token':token,...(session?{Authorization:`Bearer ${session}`}:{})},...(req.method==='POST'?{body:JSON.stringify(body)}:{}),cache:'no-store',redirect:'error',signal:AbortSignal.timeout(55000)});
   const data=await boundedJson(response,1_000_000) as Record<string,any>;
   if(['session','session-new','session-switch'].includes(route)&&response.ok){if(!/^[a-f\d]{64}$/.test(data.token)||route!=='session'&&!/^[a-f\d]{32}$/.test(data.session?.id)||route==='session-switch'&&data.session.id!==(body as Record<string,unknown>)?.session_id)throw new Error('SESSION_RESPONSE_INVALID');const result=NextResponse.json({ok:true,session:data.session});result.cookies.set('ach-v4-session',data.token,{httpOnly:true,secure:new URL(req.url).protocol==='https:'||process.env.VERCEL==='1',sameSite:'lax',path:'/',maxAge:86400});return result;}
+  // Quote routes are served by the coordinator independently of its startup
+  // manifest. Publish their verified availability with this web deployment.
+  if(response.ok&&process.env.ACH_V4_INTENTS_QUOTE_PREVIEWS==='true'&&data.intents){
+   if(route==='config')data.intents={...data.intents,dry_quotes_enabled:true};
+   if(route==='snapshot')data.intents={...data.intents,enabled:true};
+  }
   return NextResponse.json(data,{status:response.status,headers:{'Cache-Control':'no-store'}});
  }catch{return NextResponse.json({error:'SERVICE_UNAVAILABLE'},{status:503});}
 }

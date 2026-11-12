@@ -62,7 +62,7 @@ if(process.argv.includes('--diagnose')){
  finally{store.close();}process.exit();
 }
 if(process.argv.includes('--verify-only')){
- const verified={kind:'independent-final-backing',vault:config.vault,token:config.token,network:config.network,...await backing(),passed:true,finished_at:new Date().toISOString(),repository_pushed:false};
+ const verified={kind:'independent-final-backing',vault:config.vault,token:config.token,network:config.network,...await backing(),passed:true,finished_at:new Date().toISOString(),repository_pushed:config.source?.repository_pushed===true};
  const outputIndex=process.argv.indexOf('--verification-output');
  if(outputIndex>=0){const filename=process.argv[outputIndex+1];assert.ok(filename&&!filename.startsWith('--'),'VERIFICATION_OUTPUT_REQUIRED');save(filename,verified);}
  console.log(JSON.stringify({phase:'independent-final-backing',...verified}));process.exit(0);
@@ -72,5 +72,5 @@ if(!evidence.public_flow||evidence.code_hash!==config.code_hash){console.log(JSO
 if(!process.argv.includes('--public-only')&&(!evidence.private_flow||evidence.private_flow.backing.code_hash!==config.code_hash)){
  const{runPrivateLive}=await import('./private-live.mjs');console.log(JSON.stringify({phase:'live-private-workflow',vault:config.vault}));evidence.private_flow=await runPrivateLive({config,request,session,until,provider,backing});save(evidenceFile,evidence);
 }
-console.log(JSON.stringify({public_flow:'passed',real_ai:true,gross_units:'280000',net_units:'20000',withdrawal_verified:true,one_way_verified:true,repository_pushed:false}));
+console.log(JSON.stringify({public_flow:'passed',real_ai:true,gross_units:'280000',net_units:'20000',withdrawal_verified:true,one_way_verified:true,repository_pushed:config.source?.repository_pushed===true}));
 if(evidence.private_flow)console.log(JSON.stringify({private_flow:'passed',real_outlayer:true,receipt_amounts_opaque:true,padded_ciphertext:true,exact_group_disclosure:true,private_round_net_units:'20000',unauthorized_and_tampered_rejected:true,timeout_recovery_verified:true}));

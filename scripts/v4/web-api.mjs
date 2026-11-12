@@ -35,7 +35,7 @@ if(process.argv.includes('--prepare')){
  const credential=process.env.VERCEL_TOKEN??JSON.parse(readFileSync(path.join(homedir(),'.local/share/com.vercel.cli/auth.json'),'utf8')).token;
  assert.equal(typeof credential,'string','VERCEL_AUTHENTICATION_REQUIRED');
  save('request.headers','Authorization: Bearer '+credential+'\nContent-Type: application/json\n');
- const values={ACH_V4_SERVICE_TOKEN:process.env.ACH_V4_SERVICE_TOKEN,ACH_V4_DISCOVERY_URL:config.gateway.discovery_url,ACH_V4_DISCOVERY_KEY:config.gateway.signing_key,ACH_V4_NETWORK:config.network,ACH_V4_VAULT:config.vault,ACH_V4_COORDINATOR_URL:config.services.coordinator};
+ const values={ACH_V4_SERVICE_TOKEN:process.env.ACH_V4_SERVICE_TOKEN,ACH_V4_DISCOVERY_URL:config.gateway.discovery_url,ACH_V4_DISCOVERY_KEY:config.gateway.signing_key,ACH_V4_NETWORK:config.network,ACH_V4_VAULT:config.vault,ACH_V4_COORDINATOR_URL:config.services.coordinator,ACH_V4_INTENTS_QUOTE_PREVIEWS:String(config.intents?.dry_quotes_enabled===true)};
  assert.ok(Object.values(values).every(Boolean),'COMPLETE_RUNTIME_CONFIGURATION_REQUIRED');
  save('environment-body.json',Object.entries(values).map(([key,value])=>({key,value,type:'encrypted',target:['preview','production'],comment:'ACH v4 verified runtime'})));
  const files=[],hashes=[],web=path.join(repoRoot,'web');

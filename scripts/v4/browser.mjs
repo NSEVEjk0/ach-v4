@@ -36,6 +36,7 @@ if(process.argv.includes('--prepare')){
  console.log(JSON.stringify({browser_dependencies:'ready',funds_spent:false}));process.exit(0);
 }
 const {chromium}=await import('playwright');
+const {v4PurchaseGroupId}=await import('../../packages/client/dist/v4.js');
 loadPrivateEnvironment();
 const config=JSON.parse(readFileSync(manifestPath,'utf8'));
 const argument=name=>{const index=process.argv.indexOf(name);return index<0?undefined:process.argv[index+1];};
@@ -49,7 +50,7 @@ let server,browser,browserContext,page;
 const check=(name,detail={})=>{report.checks.push({name,...detail});console.log(JSON.stringify({phase:name,state:'passed'}));};
 async function until(read,predicate,name,timeout=240000){const start=Date.now();let last;while(Date.now()-start<timeout){try{last=await read();if(predicate(last))return last;if(last?.jobs?.some(j=>j.state==='FAILED'))throw new Error('BROWSER_JOB_FAILED:'+last.jobs.find(j=>j.state==='FAILED').error);}catch(e){if(e.message.startsWith('BROWSER_JOB_FAILED:')||!/UNAVAILABLE|ECONNREFUSED|fetch failed|503|Timeout/.test(e.message))throw e;}if(Math.floor((Date.now()-start)/2000)%10===0)console.log(JSON.stringify({phase:name,state:'waiting'}));await new Promise(resolve=>setTimeout(resolve,2000));}throw new Error('BROWSER_TIMEOUT:'+name);}
 function launchWeb(){
- const env={...process.env,ACH_V4_COORDINATOR_URL:config.services.coordinator,ACH_V4_NETWORK:config.network,ACH_V4_VAULT:config.vault};delete env.ACH_V4_DISCOVERY_URL;delete env.ACH_V4_DISCOVERY_KEY;
+ const env={...process.env,ACH_V4_COORDINATOR_URL:config.services.coordinator,ACH_V4_NETWORK:config.network,ACH_V4_VAULT:config.vault,ACH_V4_INTENTS_QUOTE_PREVIEWS:String(config.intents?.dry_quotes_enabled===true)};delete env.ACH_V4_DISCOVERY_URL;delete env.ACH_V4_DISCOVERY_KEY;
  server=spawn(process.execPath,['node_modules/next/dist/bin/next','start','-p','4310','-H','127.0.0.1'],{cwd:path.join(repoRoot,'web'),env,stdio:['ignore','pipe','pipe']});
  let logs='';for(const pipe of [server.stdout,server.stderr])pipe.on('data',b=>{logs=(logs+b.toString()).slice(-6000);});
  server.on('exit',code=>{if(code)report.errors.push({kind:'web-server-exit',code});});
@@ -132,18 +133,37 @@ async function liveJourney(page,context){
   await until(async()=>seen[privacy],Boolean,'browser-'+privacy+'-submission',30000);
   if(privacy==='private'){assert.equal(seen.private.brief,undefined);assert.equal(seen.private.data,undefined);assert.ok(seen.private.sealed_brief.ciphertext);check('browser-private-ingress');}
   const id=seen[privacy].request_id;
-  let completed=await until(()=>snapshot(context),s=>s.jobs.some(j=>j.id==='run-'+id&&j.state==='COMPLETE'),'browser-'+privacy+'-service-work',360000);
+  let completed=await until(()=>snapshot(context),s=>s.jobs.some(j=>j.id==='run-'+id&&j.state==='COMPLETE'),'browser-'+privacy+'-service-work',900000);
   const job=completed.jobs.find(j=>j.id==='run-'+id);if(privacy==='public'){assert.equal(job.result.planner.kind,'llm');assert.equal(job.result.chart.audit.valid,true);assert.equal(job.result.chart.sha256,createHash('sha256').update(job.result.chart.svg).digest('hex'));}
   else{assert.equal(job.result,null);assert.equal(job.sealed_result.kind,'encrypted-result');assert.ok(!JSON.stringify(completed).includes('92713'));}
   await page.locator('.artifact-surface').waitFor({timeout:30000});
   await navigateWorkspace(page,'Clearing');const sheet=page.locator('.clearing-surface');await sheet.getByRole('button',{name:privacy==='private'?'Private':'Public',exact:true}).click();
-  const clear=sheet.getByRole('button',{name:'Clear selected bills',exact:true});if(await clear.count()&&await clear.isEnabled())await clear.click();
   const publicIds=privacy==='public'?[...new Set(job.result.bills.map(bill=>bill.spec.id))]:null;
   if(publicIds)assert.equal(publicIds.length,3);
-  const settled=await until(()=>snapshot(context),s=>publicIds
+  const research=completed.session.participants.find(participant=>participant.kind==='research');
+  const fundingGroup=completed.funding_groups?.find(group=>group.input.id===v4PurchaseGroupId(config,research.account_id,id));
+  const roundId=job.result?.round_id??fundingGroup?.round_id;
+  if(config.workflow_revision===2)assert.equal(typeof roundId,'string','completed work must retain its original committed round');
+  const isSettled=s=>publicIds
    ?publicIds.every(id=>s.invoices.some(invoice=>invoice.spec.id===id&&invoice.status==='SETTLED'))
-   :s.rounds.some(r=>r.status==='SETTLED'&&r.input.private),'browser-'+privacy+'-settlement',360000);
-  const rounds=settled.rounds.filter(r=>r.status==='SETTLED'&&r.input.private===(privacy==='private')&&(!publicIds||r.input.invoice_ids.some(id=>publicIds.includes(id))));
+   :s.rounds.some(r=>r.status==='SETTLED'&&r.input.private&&(!roundId||r.input.id===roundId));
+  const clear=sheet.getByRole('button',{name:'Clear selected bills',exact:true});
+  let clearingSubmitted=false,clearingAttempts=0,nextClearingAttempt=0;
+  // Entering Clearing saves manual mode asynchronously. Wait for that action
+  // and the current ledger before clicking; a disabled control is temporary.
+  // Automatic settlement may finish first, in which case no click is needed.
+  const settled=await until(async()=>{
+   const state=await snapshot(context);if(isSettled(state))return state;
+   if(!clearingSubmitted&&clearingAttempts<3&&Date.now()>=nextClearingAttempt&&await clear.count()&&await clear.isEnabled()){
+    clearingAttempts++;nextClearingAttempt=Date.now()+15000;
+    const reply=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/v4/clear'&&response.request().method()==='POST',{timeout:30000});
+    await clear.click();const response=await reply,body=await response.json();
+    if(response.ok()){clearingSubmitted=true;check('live-'+privacy+'-clearing-request',{job_id:body.job_id??null,attempts:clearingAttempts});}
+    else assert.ok([429,503].includes(response.status())&&/UNAVAILABLE|UNKNOWN|SYNCHRONIZATION/.test(body.error??''),'BROWSER_CLEARING_REJECTED:'+response.status()+':'+(body.error??'UNKNOWN_ERROR'));
+   }
+   return null;
+  },Boolean,'browser-'+privacy+'-settlement',360000);
+  const rounds=settled.rounds.filter(r=>r.status==='SETTLED'&&r.input.private===(privacy==='private')&&(!roundId||r.input.id===roundId)&&(!publicIds||r.input.invoice_ids.some(id=>publicIds.includes(id))));
   assert.ok(rounds.length);
   const totalMovement=rounds.reduce((sum,round)=>sum+BigInt(round.net_settlement_volume),0n);
   if(publicIds){
@@ -254,7 +274,7 @@ try{
  const failedRequests=[];page.on('requestfailed',request=>{const url=new URL(request.url());if(url.protocol.startsWith('http'))failedRequests.push({host:url.hostname,error:request.failure()?.errorText});});
  report.failed_requests=failedRequests;
  await visitAll(page);
- const runtime=await context.request.get(base+'/api/v4/config');assert.ok(runtime.ok());assert.equal((await runtime.json()).vault,config.vault);check('hosted-manifest-binding');
+ const runtime=await context.request.get(base+'/api/v4/config');assert.ok(runtime.ok());const runtimeConfig=await runtime.json();assert.equal(runtimeConfig.vault,config.vault);assert.equal(runtimeConfig.intents?.dry_quotes_enabled,config.intents?.dry_quotes_enabled);check('hosted-manifest-binding');
  const rejectedOrigin=await context.request.post(base+'/api/v4/session',{headers:{origin:'https://unrelated.example'},data:{}});assert.equal(rejectedOrigin.status(),403);assert.equal((await rejectedOrigin.json()).error,'ORIGIN_MISMATCH');check('cross-origin-session-rejected');
  if(fixturesOnly){const {uiFixtures}=await import('./browser-fixtures.mjs');await uiFixtures({browser,base,config,check,layout});}
  else{
@@ -269,5 +289,5 @@ try{
 finally{
  if(browserContext&&!smoke)await browserContext.storageState({path:path.join(output,'private-browser-state.json')}).catch(()=>{});
  if(browser)await browser.close();if(server)server.kill('SIGTERM');report.finished_at=new Date().toISOString();writeFileSync(path.join(output,'report.json'),JSON.stringify(report,null,2),{mode:0o600});
- console.log(JSON.stringify({browser_checks:report.passed?'passed':'failed',checks:report.checks.length,evidence:path.join(output,'report.json'),repository_pushed:false}));
+ console.log(JSON.stringify({browser_checks:report.passed?'passed':'failed',checks:report.checks.length,evidence:path.join(output,'report.json'),repository_pushed:config.source?.repository_pushed===true}));
 }

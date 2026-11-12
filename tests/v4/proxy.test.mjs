@@ -5,10 +5,10 @@ import {localWebModules}from './web-modules.mjs';
 const modules=localWebModules();test.after(()=>modules.cleanup());
 const {NextRequest}=await import(modules.nextServerUrl),{GET,POST}=await import(modules.url('proxy'));
 const serviceSecret='a'.repeat(64),sessionToken='b'.repeat(64),session={id:'local-session'};
-const names=['ACH_V4_SERVICE_TOKEN','ACH_V4_COORDINATOR_URL','ACH_V4_DISCOVERY_URL','VERCEL'];
+const names=['ACH_V4_SERVICE_TOKEN','ACH_V4_COORDINATOR_URL','ACH_V4_DISCOVERY_URL','ACH_V4_INTENTS_QUOTE_PREVIEWS','VERCEL'];
 async function isolated(fetcher,work){
  const saved=new Map(names.map(name=>[name,process.env[name]])),oldFetch=globalThis.fetch;
- Object.assign(process.env,{ACH_V4_SERVICE_TOKEN:serviceSecret,ACH_V4_COORDINATOR_URL:'https://local-test-gateway.trycloudflare.com/',ACH_V4_DISCOVERY_URL:'',VERCEL:''});globalThis.fetch=fetcher;
+ Object.assign(process.env,{ACH_V4_SERVICE_TOKEN:serviceSecret,ACH_V4_COORDINATOR_URL:'https://local-test-gateway.trycloudflare.com/',ACH_V4_DISCOVERY_URL:'',ACH_V4_INTENTS_QUOTE_PREVIEWS:'',VERCEL:''});globalThis.fetch=fetcher;
  try{return await work();}finally{globalThis.fetch=oldFetch;for(const [name,value]of saved)if(value===undefined)delete process.env[name];else process.env[name]=value;}
 }
 async function request(route,{method='POST',body={},headers={},url='https://workspace.test/api/v4/'+route}={}){
@@ -100,5 +100,31 @@ test('workspace switching binds the requested workspace and cannot set a cookie 
  const id='c'.repeat(32),headers={cookie:'ach-v4-session='+sessionToken};
  for(const returned of [{id},{id:'d'.repeat(32)},{}])await isolated(async(url,options)=>{assert.equal(new URL(url).pathname,'/session-switch');assert.deepEqual(JSON.parse(options.body),{session_id:id});return new Response(JSON.stringify({session:returned,token:'d'.repeat(64)}));},async()=>{
   const reply=await request('session-switch',{body:{session_id:id},headers});assert.equal(reply.status,returned.id===id?200:503);if(returned.id!==id)assert.equal(reply.headers.get('set-cookie'),null);
+ });
+});
+
+test('verified web quote previews preserve settlement network and mainnet execution limits',async()=>{
+ for(const route of ['config','snapshot']){
+  const intents=route==='config'?{dry_quotes_enabled:false,mainnet_routes_exercised:false}:{enabled:false,network:'mainnet',routes_exercised:false};
+  const payload={network:'testnet',vault:'fixture.testnet',intents};
+  await isolated(async()=>new Response(JSON.stringify(payload)),async()=>{
+   for(const setting of ['', 'false', 'true']){
+    process.env.ACH_V4_INTENTS_QUOTE_PREVIEWS=setting;
+    const reply=await request(route,{method:'GET',headers:{cookie:'ach-v4-session='+sessionToken}}),data=await reply.json();
+    assert.equal(reply.status,200);assert.equal(data.network,'testnet');assert.equal(data.vault,'fixture.testnet');
+    assert.deepEqual(data.intents,setting==='true'?{...intents,[route==='config'?'dry_quotes_enabled':'enabled']:true}:intents);
+   }
+  });
+ }
+});
+
+test('quote-preview publication cannot change backend errors or quote execution data',async()=>{
+ for(const [route,method,status,payload]of [
+  ['snapshot','GET',503,{error:'SERVICE_UNAVAILABLE',intents:{enabled:false}}],
+  ['intents/quote','POST',200,{dry:true,state:'QUOTED',network:'mainnet',request:{dry:true},intents:{enabled:false}}],
+ ])await isolated(async()=>new Response(JSON.stringify(payload),{status}),async()=>{
+  process.env.ACH_V4_INTENTS_QUOTE_PREVIEWS='true';
+  const reply=await request(route,{method,headers:{cookie:'ach-v4-session='+sessionToken}});
+  assert.equal(reply.status,status);assert.deepEqual(await reply.json(),payload);
  });
 });

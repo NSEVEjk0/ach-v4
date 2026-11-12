@@ -57,5 +57,5 @@ try{
  if(!encryption||encryption.worker_hash!==hash)throw new Error('LIVE_ENCRYPTION_KEY_VERIFICATION_FAILED');
  const capability={enabled:true,state:'live-key-verified',outlayer_account:'outlayer.testnet',url,hash,profile,encryption_key:encryption,protected_key_plaintext_received:false,secrets_owner:manifest.vault,access,upload_tx:upload.tx_hash,secret_storage_tx:stored.tx_hash,key_bootstrap_tx:keyRun.tx_hash,private_round_verified:false,verified_at:new Date().toISOString()};
  writeFileSync(outlayerPath,JSON.stringify(capability,null,2));manifest.private=capability;writeFileSync(manifestPath,JSON.stringify(manifest,null,2));
- console.log(JSON.stringify({phase:'private-key-verified',public_key:encryption.public_key,hash,repository_pushed:false}));
+ console.log(JSON.stringify({phase:'private-key-verified',public_key:encryption.public_key,hash,repository_pushed:manifest.source?.repository_pushed===true}));
 }finally{journal.close();}

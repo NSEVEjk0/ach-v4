@@ -104,6 +104,6 @@ mkdirSync(unitDir,{recursive:true});writeFileSync(unitPath,unit);
 for(const args of [['--user','daemon-reload'],['--user','enable',layout.unit],['--user','restart',layout.unit]]){const r=spawnSync('systemctl',args,{encoding:'utf8'});if(r.error||r.status!==0)throw new Error('DURABLE_USER_SERVICE_INSTALLATION_FAILED');}
 for(let attempt=0;attempt<30;attempt++){
  const health=await Promise.all(Object.values(config.services).map(async base=>{try{return(await fetch(new URL('/health',base),{signal:AbortSignal.timeout(2000)})).ok;}catch{return false;}}));
- if(health.every(Boolean)){console.log(JSON.stringify({services:'healthy',independent_signing_processes:3,durable_storage:true,sponsor_charges_visitor:false,repository_pushed:false}));break;}
+ if(health.every(Boolean)){console.log(JSON.stringify({services:'healthy',independent_signing_processes:3,durable_storage:true,sponsor_charges_visitor:false,repository_pushed:config.source?.repository_pushed===true}));break;}
  if(attempt===29)throw new Error('SERVICE_STARTUP_UNVERIFIED');await new Promise(resolve=>setTimeout(resolve,1000));
 }

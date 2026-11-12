@@ -101,5 +101,5 @@ try{
  }
  const backing=await provider.callFunction({contractId:config.vault,method:'get_backing_status',args:{},blockQuery:{finality:'final'}});assert.equal(backing.claims_equal_tracked_custody,true);report.backing=backing;report.passed=true;report.finished_at=new Date().toISOString();save(reportFile,report);
  const updated=JSON.parse(readFileSync(manifestPath,'utf8'));updated.limits.gas_verified=true;updated.limits.gas_evidence='gas.json';save(manifestPath,updated);
- console.log(JSON.stringify({gas_limit_verification:'passed',fixture_service_activity:false,limits:{participants:12,invoices:48},repository_pushed:false}));
+ console.log(JSON.stringify({gas_limit_verification:'passed',fixture_service_activity:false,limits:{participants:12,invoices:48},repository_pushed:config.source?.repository_pushed===true}));
 }finally{journal.close();}
