@@ -56,14 +56,15 @@ if(process.argv.includes('--prepare')){
  const fingerprint=createHash('sha256').update(JSON.stringify(hashes.sort(([a],[b])=>a.localeCompare(b)))).digest('hex');
  const body={name:'ach',project:project.projectId,files,projectSettings:{framework:'nextjs',rootDirectory:'web',nodeVersion:'22.x',buildCommand:'npm run build',installCommand:'npm ci',outputDirectory:null},meta:{achProtocol:'4',achVault:config.vault,achCodeHash:config.code_hash,achWebSourceSha256:fingerprint,repositoryPushed:String(state.repository_pushed)}};
  save('preview-body.json',body);save('production-body.json',{...body,target:'production'});
- save('bypass-create-body.json',{generate:{note:'ACH v4 interface review 20261110'}});
+ state.bypass_note??='ACH v4 interface review '+new Date().toISOString();
+ save('bypass-create-body.json',{generate:{note:state.bypass_note}});
  state.prepared_at=new Date().toISOString();state.web_source_sha256=fingerprint;state.source_files=files.length;record();
  textPlan();
 }else if(process.argv.includes('--record-bypass')){
  const response=read('bypass-create-response.json');
  if(response.error)throw new Error('VERCEL_BYPASS_'+String(response.error.code));
  const entries=Object.entries(response.protectionBypass??{});
- const secret=entries.find(([,value])=>value.note==='ACH v4 interface review 20261110')?.[0]??response.secret;
+ const secret=entries.find(([,value])=>value.note===state.bypass_note)?.[0]??response.secret;
  assert.ok(typeof secret==='string'&&/^[A-Za-z0-9_-]{20,}$/.test(secret),'PROJECT_BYPASS_RESPONSE_REQUIRED');
  save('browser.env','ACH_V4_PREVIEW_BYPASS='+secret+'\n');
  save('bypass-revoke-body.json',{revoke:{secret,regenerate:false}});

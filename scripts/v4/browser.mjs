@@ -254,7 +254,7 @@ async function liveJourney(page,context){
   settled=await until(()=>snapshot(context),state=>state.session.id===originalId&&state.session.state==='READY','reopen-original-judge-workspace');
   Object.assign(seen,originalRequests);writeFileSync(requestFile,JSON.stringify(seen),{mode:0o600});
   assert.equal(settled.jobs.filter(job=>job.state==='COMPLETE').length,original.jobs.filter(job=>job.state==='COMPLETE').length);assert.deepEqual(settled.jobs.find(job=>job.id===privateJob.id).sealed_result,privateJob.sealed_result);
-  await navigateWorkspace(page,'History');await page.locator(`a[href*="${privateJob.id}"]`).first().click();await page.getByRole('dialog').locator('.artifact-surface').waitFor({timeout:30000});assert.match(await page.getByRole('dialog').innerText(),/92713/);await page.getByRole('button',{name:'Close details',exact:true}).click();check('live-workspace-switch-preserves-history-and-private-results');
+  await openPrivateHistory(page,privateJob,originalId);check('live-workspace-switch-preserves-history-and-private-results');
  }
  // Save browser keys and cookies only in the private working namespace.
  await context.storageState({path:path.join(output,'private-browser-state.json')});
@@ -262,6 +262,65 @@ async function liveJourney(page,context){
  const state=await snapshot(context);if(config.workflow_revision===2){assert.ok(state.invoices.length>=6);assert.ok(state.private_invoices.length>=3);}else{assert.equal(state.invoices.length,3);assert.equal(state.private_invoices.length,3);}
  // A separate browser has no decryption key and no access to this session.
  const isolated=await browser.newContext();const other=await isolated.request.get(base+'/api/v4/snapshot');assert.equal(other.status(),401);await isolated.close();check('browser-session-isolation');
+}
+async function openPrivateHistory(page,job,sessionId){
+ const id=job.id;assert.ok(job.sealed_result,'ORIGINAL_PRIVATE_RESULT_REQUIRED');
+ const {default:typescript}=await import('typescript');
+ const code=typescript.transpileModule(readFileSync(path.join(repoRoot,'web/lib/privacy.ts'),'utf8'),{compilerOptions:{module:typescript.ModuleKind.CommonJS,target:typescript.ScriptTarget.ES2022}}).outputText;
+ const expected=await page.evaluate(async({code,network,vault,sessionId,response})=>{
+  const exported={};new Function('exports',code)(exported);
+  const artifact=await exported.openResult(network,vault,sessionId,response);
+  return{svg:artifact.chart.svg,sha256:artifact.chart.sha256,title:artifact.chart.title};
+ },{code,network:config.network,vault:config.vault,sessionId,response:job.sealed_result});
+ assert.equal(createHash('sha256').update(expected.svg).digest('hex'),expected.sha256,'ORIGINAL_PRIVATE_ARTIFACT_HASH_MISMATCH');
+ await navigateWorkspace(page,'History');await page.getByLabel('Search history',{exact:true}).fill(id);
+ // CSV exports contain every record ID too. Select the actual work row.
+ await page.locator(`.history-surface a.history-row[href*="${id}"]`).click();
+ assert.equal(new URL(page.url()).searchParams.get('item'),'work');assert.equal(new URL(page.url()).searchParams.get('id'),id);
+ const dialog=page.getByRole('dialog');await dialog.locator('.artifact-surface').waitFor({timeout:30000});
+ assert.ok((await dialog.innerText()).includes(expected.title),'ORIGINAL_PRIVATE_ARTIFACT_TITLE_REQUIRED');
+ await dialog.getByText('Private deliverable · opened in this browser',{exact:true}).waitFor();
+ const[download]=await Promise.all([page.waitForEvent('download'),dialog.getByRole('link',{name:'Download SVG',exact:true}).click()]);
+ const bytes=readFileSync(await download.path());assert.ok(bytes.equals(Buffer.from(expected.svg)),'PRIVATE_HISTORY_ARTIFACT_CHANGED');
+ assert.equal(createHash('sha256').update(bytes).digest('hex'),expected.sha256,'PRIVATE_HISTORY_ARTIFACT_HASH_MISMATCH');
+ await page.getByRole('button',{name:'Close details',exact:true}).click();
+}
+
+async function resumeJudgeJourney(page,context){
+ const previousPath=argument('--resume-report'),checkpointPath=argument('--resume-judge-workspaces');
+ assert.ok(previousPath&&checkpointPath,'EXPLICIT_JUDGE_CONTINUATION_REQUIRED');
+ const bytes=readFileSync(previousPath),previous=JSON.parse(bytes),checkpoint=JSON.parse(readFileSync(checkpointPath,'utf8'));
+ assert.notEqual(path.resolve(previousPath),path.resolve(output,'report.json'),'PRESERVE_PREVIOUS_BROWSER_REPORT');
+ for(const field of ['vault','code_hash','url'])assert.equal(previous[field],report[field],'JUDGE_CONTINUATION_RUNTIME_MISMATCH:'+field);
+ assert.equal(previous.passed,false);assert.deepEqual(previous.errors,[]);assert.equal((previous.workflow_findings??[]).length,0);
+ for(const name of ['free-browser-onboarding','live-public-work-and-clearing','live-browser-withdrawal','live-browser-authenticated-redeposit','browser-private-ingress','live-private-work-and-clearing','live-third-identical-brief','live-fresh-workspace-work-and-clearing'])assert.ok(previous.checks.some(check=>check.name===name),'COMPLETED_JUDGE_STAGE_REQUIRED:'+name);
+ assert.ok(!previous.checks.some(check=>check.name==='live-workspace-switch-preserves-history-and-private-results'),'UNFINISHED_JUDGE_STAGE_REQUIRED');
+ assert.equal(checkpoint.previous_report_sha256,createHash('sha256').update(bytes).digest('hex'));
+ report.continuation={previous_report:previousPath,previous_report_sha256:checkpoint.previous_report_sha256,previous_started_at:previous.started_at,previous_finished_at:previous.finished_at,previous_failure:previous.failure,completed_checks_retained:previous.checks.length};
+ report.checks.unshift(...previous.checks);
+ await page.goto(base+'/workspace',{waitUntil:'domcontentloaded'});await page.locator('.wallet-summary').waitFor({timeout:60000});
+ let original=await until(()=>snapshot(context),state=>state.session.id===checkpoint.original_session_id&&state.session.state==='READY','resume-original-judge-workspace');
+ const privateJob=original.jobs.find(job=>job.id===checkpoint.private_job_id);assert.equal(privateJob?.state,'COMPLETE');assert.ok(privateJob.sealed_result);
+ assert.equal(createHash('sha256').update(JSON.stringify(privateJob.sealed_result)).digest('hex'),checkpoint.private_result_sha256);
+ const verifiedIds=previous.checks.filter(check=>check.name==='live-public-work-and-clearing'||check.name==='live-private-work-and-clearing').flatMap(check=>check.round_ids);
+ const verifyRounds=state=>state.rounds.filter(round=>verifiedIds.includes(round.input.id)).forEach(round=>{assert.equal(round.status,'SETTLED');assert.equal(round.net_settlement_volume,'20000');assert.equal(round.input.invoice_ids.length,3);assert.equal(round.approvals.length,3);});
+ verifyRounds(original);
+ const selectWorkspace=async id=>{
+  await navigateWorkspace(page,'Settings');const selector=page.getByRole('combobox',{name:'Test workspace'});
+  await selector.locator(`option[value="${id}"]`).waitFor({state:'attached',timeout:60000});
+  await until(()=>selector.isEnabled(),Boolean,'workspace-switch-control',60000);await selector.selectOption(id);
+  const state=await until(()=>snapshot(context),state=>state.session.id===id&&state.session.state==='READY','resume-judge-workspace-switch');
+  await page.getByRole('heading',{name:'Overview',exact:true,level:1}).waitFor({timeout:60000});return state;
+ };
+ const fresh=await selectWorkspace(checkpoint.fresh_session_id);assert.equal(fresh.jobs.filter(job=>job.state==='COMPLETE').length,1);assert.equal(fresh.invoices.length,3);assert.ok(fresh.invoices.every(invoice=>invoice.status==='SETTLED'));
+ assert.ok(fresh.rounds.some(round=>round.input.id===checkpoint.fresh_round_id&&round.status==='SETTLED'));verifyRounds(fresh);
+ assert.ok(verifiedIds.every(id=>[...original.rounds,...fresh.rounds].some(round=>round.input.id===id)),'EVERY_PREVIOUSLY_VERIFIED_ROUND_REQUIRED');
+ assert.ok(fresh.session.participants.every(participant=>!original.session.participants.some(other=>other.account_id===participant.account_id)));check('resumed-fresh-workspace-state-reverified');
+ const reopened=await selectWorkspace(original.session.id);assert.equal(reopened.jobs.filter(job=>job.state==='COMPLETE').length,original.jobs.filter(job=>job.state==='COMPLETE').length);assert.deepEqual(reopened.jobs.find(job=>job.id===privateJob.id).sealed_result,privateJob.sealed_result);
+ await openPrivateHistory(page,privateJob,original.session.id);check('live-workspace-switch-preserves-history-and-private-results');
+ await context.storageState({path:path.join(output,'private-browser-state.json')});await navigateWorkspace(page,'Settings');await layout(page,'private-settings',1440);
+ assert.ok(reopened.invoices.length>=6);assert.ok(reopened.private_invoices.length>=3);
+ const isolated=await browser.newContext();assert.equal((await isolated.request.get(base+'/api/v4/snapshot')).status(),401);await isolated.close();check('browser-session-isolation');
 }
 try{
  if(!remote){launchWeb();await until(async()=>{try{return(await fetch(base)).ok;}catch{return false;}},Boolean,'production-web-start',30000);}
@@ -278,7 +337,7 @@ try{
  const rejectedOrigin=await context.request.post(base+'/api/v4/session',{headers:{origin:'https://unrelated.example'},data:{}});assert.equal(rejectedOrigin.status(),403);assert.equal((await rejectedOrigin.json()).error,'ORIGIN_MISMATCH');check('cross-origin-session-rejected');
  if(fixturesOnly){const {uiFixtures}=await import('./browser-fixtures.mjs');await uiFixtures({browser,base,config,check,layout});}
  else{
- if(!smoke)await liveJourney(page,context);else if(!reuse)throw new Error('SMOKE_REQUIRES_EXISTING_SESSION');
+ if(!smoke){if(argument('--resume-report'))await resumeJudgeJourney(page,context);else await liveJourney(page,context);}else if(!reuse)throw new Error('SMOKE_REQUIRES_EXISTING_SESSION');
  await inspectWorkspace(page);
  // A failed read retains the last confirmed amounts and disables writes.
  const before=await page.locator('.wallet-summary').innerText();await page.route('**/api/v4/snapshot',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'SERVICE_UNAVAILABLE'})}));
