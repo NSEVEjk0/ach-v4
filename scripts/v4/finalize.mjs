@@ -22,7 +22,7 @@ const publicUrl='https://ach-rosy.vercel.app';
 assert.equal(state.vault,manifest.vault);
 assert.equal(state.code_hash,manifest.code_hash);
 assert.equal(state.repository_pushed,manifest.source?.repository_pushed===true,'REPOSITORY_PUBLICATION_STATE_MISMATCH');
-assert.ok(state.bypass_revoked_at,'TEMPORARY_BYPASS_MUST_BE_REVOKED');
+assert.ok(state.bypass_created===false&&state.bypass_revoked_at&&state.bypass_revoked_at>=state.prepared_at,'CURRENT_TEMPORARY_BYPASS_MUST_BE_REVOKED');
 
 const browser=[];
 const hostedDirectory=name=>releaseDirectory==='web-release'?name:releaseDirectory+'/'+name;
@@ -107,7 +107,8 @@ if(manifest.workflow_revision===2){
  assert.equal(workflowReview.vault_wasm_sha256,manifest.artifacts.vault.sha256);
 }
 for(const[filename,hash]of Object.entries(workflowReview.source_sha256))assert.equal(digest(readFileSync(path.join(repoRoot,filename))),hash,'WORKFLOW_REVIEW_SOURCE_CHANGED:'+filename);
-for(const [role,artifact] of Object.entries(manifest.artifacts)){
+const releaseArtifacts={...manifest.artifacts,...Object.fromEntries(Object.entries(manifest.sdk_archives??{}).map(([role,artifact])=>['sdk:'+role,artifact]))};
+for(const [role,artifact] of Object.entries(releaseArtifacts)){
  const bytes=readFileSync(path.resolve(repoRoot,artifact.path));assert.equal(digest(bytes),artifact.sha256,'DEPLOYED_ARTIFACT_MISMATCH:'+role);assert.equal(bytes.length,artifact.bytes);
  if(role==='vault')assert.equal(baseEncode(createHash('sha256').update(bytes).digest()),manifest.code_hash);
  if(role==='worker')assert.equal(artifact.sha256,manifest.private.hash);

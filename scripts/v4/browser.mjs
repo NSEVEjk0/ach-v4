@@ -7,6 +7,7 @@ import {parseEnv}from 'node:util';
 import path from 'node:path';
 import {privateRoot,privatePath,manifestPath,repoRoot,loadPrivateEnvironment}from '../../services/lib/paths.mjs';
 import {spawnLogged}from '../../services/lib/process.mjs';
+import {readBrowserCheckpoint,writeBrowserCheckpoint,redactBrowserMessage,retryableBrowserRead}from './browser-state.mjs';
 
 if(process.argv.includes('--local')){await import('./browser-local.mjs');process.exit(process.exitCode??0);}
 
@@ -45,10 +46,12 @@ const remote=argument('--url')??process.env.ACH_V4_BROWSER_URL;
 const base=remote??'http://127.0.0.1:4310';
 const smoke=process.argv.includes('--smoke'),reuse=process.argv.includes('--reuse-live'),fixturesOnly=process.argv.includes('--fixtures-only');
 const output=argument('--output')??privatePath(fixturesOnly?'browser-ui-fixtures':remote?'browser-hosted':'browser-local');mkdirSync(output,{recursive:true,mode:0o700});
+const checkpointFile=path.join(output,'private-browser-checkpoint.json'),checkpointBinding={url:base,vault:config.vault,code_hash:config.code_hash};
+const resumedCheckpoint=readBrowserCheckpoint(checkpointFile,checkpointBinding);
 const report={kind:smoke?'browser-smoke':'browser-live-journeys',url:base,vault:config.vault,code_hash:config.code_hash,started_at:new Date().toISOString(),passed:false,checks:[],screenshots:[],errors:[]};
 let server,browser,browserContext,page;
 const check=(name,detail={})=>{report.checks.push({name,...detail});console.log(JSON.stringify({phase:name,state:'passed'}));};
-async function until(read,predicate,name,timeout=240000){const start=Date.now();let last;while(Date.now()-start<timeout){try{last=await read();if(predicate(last))return last;if(last?.jobs?.some(j=>j.state==='FAILED'))throw new Error('BROWSER_JOB_FAILED:'+last.jobs.find(j=>j.state==='FAILED').error);}catch(e){if(e.message.startsWith('BROWSER_JOB_FAILED:')||!/UNAVAILABLE|ECONNREFUSED|fetch failed|503|Timeout/.test(e.message))throw e;}if(Math.floor((Date.now()-start)/2000)%10===0)console.log(JSON.stringify({phase:name,state:'waiting'}));await new Promise(resolve=>setTimeout(resolve,2000));}throw new Error('BROWSER_TIMEOUT:'+name);}
+async function until(read,predicate,name,timeout=240000){const start=Date.now();let last;while(Date.now()-start<timeout){try{last=await read();if(predicate(last))return last;if(last?.jobs?.some(j=>j.state==='FAILED'))throw new Error('BROWSER_JOB_FAILED:'+last.jobs.find(j=>j.state==='FAILED').error);}catch(e){if(e.message.startsWith('BROWSER_JOB_FAILED:')||!retryableBrowserRead(e))throw e;}if(Math.floor((Date.now()-start)/2000)%10===0)console.log(JSON.stringify({phase:name,state:'waiting'}));await new Promise(resolve=>setTimeout(resolve,2000));}throw new Error('BROWSER_TIMEOUT:'+name);}
 function launchWeb(){
  const env={...process.env,ACH_V4_COORDINATOR_URL:config.services.coordinator,ACH_V4_NETWORK:config.network,ACH_V4_VAULT:config.vault,ACH_V4_INTENTS_QUOTE_PREVIEWS:String(config.intents?.dry_quotes_enabled===true)};delete env.ACH_V4_DISCOVERY_URL;delete env.ACH_V4_DISCOVERY_KEY;
  server=spawn(process.execPath,['node_modules/next/dist/bin/next','start','-p','4310','-H','127.0.0.1'],{cwd:path.join(repoRoot,'web'),env,stdio:['ignore','pipe','pipe']});
@@ -115,14 +118,30 @@ async function liveJourney(page,context){
  let initial=await until(()=>snapshot(context),s=>s.session.state==='READY','sponsored-wallets',480000);assert.equal(initial.session.participants.length,3);if(sessionResult.session)assert.equal(initial.balances.find(b=>b.account_id===initial.session.participants[0].account_id).available,'1000000');
  await navigateWorkspace(page,'Work');await page.locator('#brief').waitFor({timeout:60000});check('free-browser-onboarding',{session_id:initial.session.id,resumed:!sessionResult.session});
  assert.equal(await page.locator('#wallet-scope').count(),0,'Work is commissioned by Research Desk');
- const requestFile=path.join(output,'private-browser-requests.json'),seen=existsSync(requestFile)?JSON.parse(readFileSync(requestFile,'utf8')):{};
+ if(resumedCheckpoint)assert.equal(resumedCheckpoint.session_id,initial.session.id,'BROWSER_CHECKPOINT_SESSION_MISMATCH');
+ const requestFile=path.join(output,'private-browser-requests.json'),seen=resumedCheckpoint?structuredClone(resumedCheckpoint.requests):existsSync(requestFile)?JSON.parse(readFileSync(requestFile,'utf8')):{};
+ let activeSessionId=initial.session.id,checkpointFailure;
+ const checkpoint=async()=>{
+  const storage_state=await context.storageState();
+  writeBrowserCheckpoint(checkpointFile,checkpointBinding,{session_id:activeSessionId,requests:structuredClone(seen),storage_state});
+  writeFileSync(requestFile,JSON.stringify(seen),{mode:0o600});
+  writeFileSync(path.join(output,'private-browser-state.json'),JSON.stringify(storage_state),{mode:0o600});
+ };
  if(!Object.keys(seen).length){
   // Recover a previously submitted test brief from this browser's own session.
   // Public inputs or sealed private inputs stay in the private test namespace.
   const {StateStore}=await import('../../services/lib/store.mjs'),store=new StateStore(privatePath('coordinator.sqlite'));
   try{for(const job of store.jobs(initial.session.id).filter(j=>j.id.startsWith('run-'))){const privacy=job.payload.privacy==='encrypted'?'private':job.payload.privacy;seen[privacy]={...job.payload,privacy};}}finally{store.close();}
  }
- page.on('request',request=>{const route=new URL(request.url()).pathname;if(request.method()==='POST'&&['/api/v4/run','/api/v4/withdraw','/api/v4/deposit'].includes(route)){const body=request.postDataJSON();seen[route==='/api/v4/run'?body.privacy:route.split('/').at(-1)]=body;writeFileSync(requestFile,JSON.stringify(seen),{mode:0o600});}});
+ await checkpoint();
+ // Persist the original request and its browser key before it reaches the
+ // service. A killed verifier can then resume without repeating a purchase.
+ await page.route(/\/api\/v4\/(?:run|withdraw|deposit)(?:\?.*)?$/,async route=>{
+  const request=route.request();if(request.method()!=='POST'||new URL(request.url()).origin!==new URL(base).origin)return route.continue();
+  const pathname=new URL(request.url()).pathname,body=request.postDataJSON();
+  seen[pathname==='/api/v4/run'?body.privacy:pathname.split('/').at(-1)]=body;
+  try{await checkpoint();await route.continue();}catch(error){checkpointFailure=error;await route.abort('failed');}
+ });
  const run=async privacy=>{
   await navigateWorkspace(page,'Work');
   await page.locator('#brief').fill(privacy==='private'?'Private client workload 92713; create an audited chart.':'Create an audited chart of the supplied service workloads.');
@@ -130,13 +149,15 @@ async function liveJourney(page,context){
   await page.getByRole('radio',{name:privacy==='private'?/^Private invoices/:/^Public/}).check();
   if(seen[privacy]){const response=await context.request.post(base+'/api/v4/run',{data:seen[privacy]});const body=await response.json();assert.ok(response.ok(),'BROWSER_RESUME_REJECTED:'+(body.error??response.status()));check('resumed-original-browser-request',{privacy});}
   else await page.getByRole('button',{name:'Run agents',exact:true}).click();
-  await until(async()=>seen[privacy],Boolean,'browser-'+privacy+'-submission',30000);
+  await until(async()=>{if(checkpointFailure)throw checkpointFailure;return seen[privacy];},Boolean,'browser-'+privacy+'-submission',30000);
   if(privacy==='private'){assert.equal(seen.private.brief,undefined);assert.equal(seen.private.data,undefined);assert.ok(seen.private.sealed_brief.ciphertext);check('browser-private-ingress');}
   const id=seen[privacy].request_id;
   let completed=await until(()=>snapshot(context),s=>s.jobs.some(j=>j.id==='run-'+id&&j.state==='COMPLETE'),'browser-'+privacy+'-service-work',900000);
   const job=completed.jobs.find(j=>j.id==='run-'+id);if(privacy==='public'){assert.equal(job.result.planner.kind,'llm');assert.equal(job.result.chart.audit.valid,true);assert.equal(job.result.chart.sha256,createHash('sha256').update(job.result.chart.svg).digest('hex'));}
   else{assert.equal(job.result,null);assert.equal(job.sealed_result.kind,'encrypted-result');assert.ok(!JSON.stringify(completed).includes('92713'));}
   await page.locator('.artifact-surface').waitFor({timeout:30000});
+  if(privacy==='private'){await openPrivateHistory(page,job,completed.session.id);check('live-private-artifact-and-exact-download');}
+  await checkpoint();
   await navigateWorkspace(page,'Clearing');const sheet=page.locator('.clearing-surface');await sheet.getByRole('button',{name:privacy==='private'?'Private':'Public',exact:true}).click();
   const publicIds=privacy==='public'?[...new Set(job.result.bills.map(bill=>bill.spec.id))]:null;
   if(publicIds)assert.equal(publicIds.length,3);
@@ -240,7 +261,7 @@ async function liveJourney(page,context){
  if(config.private?.enabled)settled=await run('private');else throw new Error('LIVE_PRIVATE_MODE_REQUIRED');
  if(config.workflow_revision===2){
   const previousPublic=seen.public.request_id,completed=settled.jobs.filter(job=>job.state==='COMPLETE').length;
-  delete seen.public;writeFileSync(requestFile,JSON.stringify(seen),{mode:0o600});
+  delete seen.public;await checkpoint();
   await page.waitForTimeout(5100);settled=await run('public');
   assert.notEqual(seen.public.request_id,previousPublic);assert.ok(settled.jobs.filter(job=>job.state==='COMPLETE').length>=3);assert.equal(settled.jobs.filter(job=>job.state==='COMPLETE').length,completed+1);check('live-third-identical-brief');
   const original=settled,originalId=settled.session.id,originalRequests=structuredClone(seen),privateJob=original.jobs.find(job=>job.id==='run-'+seen.private.request_id);
@@ -248,11 +269,11 @@ async function liveJourney(page,context){
   await navigateWorkspace(page,'Work');await page.getByRole('button',{name:'Start another test workspace',exact:true}).click();
   let fresh=await until(()=>snapshot(context),state=>state.session.id!==originalId&&state.session.state==='READY','fresh-judge-workspace',480000);
   assert.equal(fresh.jobs.length,0);assert.ok(fresh.session.participants.every(participant=>!originalAccounts.has(participant.account_id)));
-  for(const key of Object.keys(seen))delete seen[key];writeFileSync(requestFile,JSON.stringify(seen),{mode:0o600});
+  activeSessionId=fresh.session.id;for(const key of Object.keys(seen))delete seen[key];await checkpoint();
   await page.waitForTimeout(5100);fresh=await run('public');assert.equal(fresh.jobs.filter(job=>job.state==='COMPLETE').length,1);assert.equal(fresh.invoices.length,3);check('live-fresh-workspace-work-and-clearing');
   await navigateWorkspace(page,'Settings');await page.getByRole('combobox',{name:'Test workspace'}).locator(`option[value="${originalId}"]`).waitFor({state:'attached',timeout:30000});await page.getByRole('combobox',{name:'Test workspace'}).selectOption(originalId);
   settled=await until(()=>snapshot(context),state=>state.session.id===originalId&&state.session.state==='READY','reopen-original-judge-workspace');
-  Object.assign(seen,originalRequests);writeFileSync(requestFile,JSON.stringify(seen),{mode:0o600});
+  activeSessionId=originalId;Object.assign(seen,originalRequests);await checkpoint();
   assert.equal(settled.jobs.filter(job=>job.state==='COMPLETE').length,original.jobs.filter(job=>job.state==='COMPLETE').length);assert.deepEqual(settled.jobs.find(job=>job.id===privateJob.id).sealed_result,privateJob.sealed_result);
   await openPrivateHistory(page,privateJob,originalId);check('live-workspace-switch-preserves-history-and-private-results');
  }
@@ -327,9 +348,9 @@ try{
  browser=await chromium.launch({headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
  const headers=process.env.ACH_V4_PREVIEW_BYPASS?{'x-vercel-protection-bypass':process.env.ACH_V4_PREVIEW_BYPASS}:{};
  const saved=path.join(output,'private-browser-state.json');
- const context=await browser.newContext({viewport:{width:1440,height:1000},reducedMotion:'reduce',extraHTTPHeaders:headers,acceptDownloads:true,...(!reuse&&existsSync(saved)?{storageState:saved}:{})});browserContext=context;await configureCookie(context);
+ const context=await browser.newContext({viewport:{width:1440,height:1000},reducedMotion:'reduce',extraHTTPHeaders:headers,acceptDownloads:true,...(!reuse&&(resumedCheckpoint||existsSync(saved))?{storageState:resumedCheckpoint?.storage_state??saved}:{})});browserContext=context;await configureCookie(context);
  if(process.env.ACH_V4_PREVIEW_BYPASS){const origin=new URL(base).origin;await context.route('**/*',route=>{if(new URL(route.request().url()).origin===origin)return route.continue();const publicHeaders={...route.request().headers()};delete publicHeaders['x-vercel-protection-bypass'];return route.continue({headers:publicHeaders});});}
- page=await context.newPage();page.on('pageerror',error=>report.errors.push({kind:'browser-runtime',name:error.name,message:error.message.slice(0,300)}));
+ page=await context.newPage();page.on('pageerror',error=>report.errors.push({kind:'browser-runtime',name:error.name,message:redactBrowserMessage(error.message).slice(0,300)}));
  const failedRequests=[];page.on('requestfailed',request=>{const url=new URL(request.url());if(url.protocol.startsWith('http'))failedRequests.push({host:url.hostname,error:request.failure()?.errorText});});
  report.failed_requests=failedRequests;
  await visitAll(page);
@@ -344,7 +365,7 @@ try{
  await page.getByRole('button',{name:'Refresh confirmed state'}).click();await page.locator('.connection.stale').waitFor();assert.equal(await page.locator('.wallet-summary').innerText(),before);check('stale-data-retains-confirmed-balances');await page.unroute('**/api/v4/snapshot');
  }
  assert.equal(report.errors.length,0,JSON.stringify(report.errors));report.passed=true;
-}catch(error){report.failure={name:error.name,message:error.message};if(page&&!page.isClosed()){report.failure.visible_errors=await page.getByRole('alert').allTextContents().catch(()=>[]);await page.screenshot({path:path.join(output,'failure.png'),fullPage:true}).catch(()=>{});}process.exitCode=1;console.error(JSON.stringify({phase:'browser-verification',state:'failed',error:error.message,visible_errors:report.failure.visible_errors,failed_requests:report.failed_requests}));}
+}catch(error){report.failure={name:error.name,message:redactBrowserMessage(error.message)};if(page&&!page.isClosed()){report.failure.visible_errors=(await page.getByRole('alert').allTextContents().catch(()=>[])).map(redactBrowserMessage);await page.screenshot({path:path.join(output,'failure.png'),fullPage:true}).catch(()=>{});}process.exitCode=1;console.error(JSON.stringify({phase:'browser-verification',state:'failed',error:report.failure.message,visible_errors:report.failure.visible_errors,failed_requests:report.failed_requests}));}
 finally{
  if(browserContext&&!smoke)await browserContext.storageState({path:path.join(output,'private-browser-state.json')}).catch(()=>{});
  if(browser)await browser.close();if(server)server.kill('SIGTERM');report.finished_at=new Date().toISOString();writeFileSync(path.join(output,'report.json'),JSON.stringify(report,null,2),{mode:0o600});

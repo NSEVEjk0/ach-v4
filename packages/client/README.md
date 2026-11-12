@@ -29,9 +29,9 @@ if(payable.status==='READY'){
 }
 ```
 
-The corrected workflow requires a manifest with `workflow_revision: 2` and a
-fresh revision-2 vault. The hosted November 10 release uses the earlier workflow;
-these local corrections have not been deployed. Use `v4PurchaseGroupId` for the
+The current sponsored deployment uses `workflow_revision: 2`. Read its manifest
+and pinned vault identity before connecting. The November 10 deployment is
+retained as historical evidence. Use `v4PurchaseGroupId` for the
 proposer's group namespace and `v4FundedInvoiceId` for canonical public bill IDs.
 Every buyer owns its purchase IDs. No funded group can be split into separate
 settlements. Only net debtors reserve money; delivery acceptance transfers those
@@ -49,6 +49,28 @@ withdrawal and policy changes require the owner. The hosted sponsor owns the
 demonstration identities; independently operated agents retain their keys.
 Writes recheck the pinned deployment and workflow revision. A custom transport
 must implement `codeHash` when the manifest pins it; verification is required.
+
+An independent account first needs a registration authorization from the vault's
+storage sponsor. Send the sponsor your account ID and chosen display name. The
+sponsor uses its own owner client; your registration, policy and trades use your
+own owner and trading signers. Registration authorization does not give the
+sponsor either of your keys.
+
+```js
+// The vault's storage sponsor performs this step with its own signer.
+await storageSponsor.sponsorAccount(
+  accountId, name, Date.now() + 60 * 60 * 1000, `invite:${accountId}:1`
+);
+// Your owner client registers the same name before that authorization expires.
+await owner.register(name);
+await owner.setPolicy(policy, `policy:${accountId}:1`);
+```
+
+Arrange account gas, settlement-token storage registration and test-token funding
+before depositing. The registration authorization sponsors storage in the vault;
+it does not itself fund your external account. The free browser session provisions
+and sponsors its three hosted identities automatically. A fourth independently
+signed account is covered by the actual-Wasm service integration tests.
 
 Persist every journal operation before broadcast. Retry with the same operation
 ID and payload after a lost response. The transport reconciles the recorded

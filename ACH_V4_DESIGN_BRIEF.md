@@ -66,6 +66,6 @@ History presents only records available from the current service snapshot. Missi
 
 ## Delivery scope
 
-Complete visual and browser verification, preview deployment and production checks using the existing vault and service identities. Prepare the new `ach-v4` repository with secrets and private state excluded. Source push remains disabled by the user’s instruction.
+Complete visual and browser verification, preview deployment and production checks using the separate revision-2 vault and its existing service identities. Publish the reviewed `ach-v4` source and verified application under the resumed authorization, keeping both repositories private and excluding secrets and private state. Preserve the earlier deployment and its financial records.
 
-Audit financial or workflow flaws separately. Document evidence and proposed changes; implement those fixes only when the user requests them.
+The user authorized the funded-workflow corrections and their release. Retain the historical audit, record current verification separately, and complete the hosted acceptance journey before claiming the release verified.

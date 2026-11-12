@@ -1,6 +1,6 @@
 # ACH verification continuation — 12 November 2026
 
-The resumed checks verify workflow revision 2. **250 automated tests pass**, and two separate local browser passes each complete **66 checks**. The production web build, exact contract and worker artifacts, private cross-language integration and isolated downloadable SDK installation also pass.
+The resumed checks verify workflow revision 2. **256 automated tests pass**, and three separate local browser passes each complete **66 checks**. The production web build, exact contract and worker artifacts, private cross-language integration and isolated downloadable SDK installation also pass.
 
 | Suite | Passed |
 | --- | ---: |
@@ -9,11 +9,11 @@ The resumed checks verify workflow revision 2. **250 automated tests pass**, and
 | Services and private commerce | 53 |
 | Client SDK | 24 |
 | Owner Intents SDK | 15 |
-| UI helpers, proxy and security regressions | 26 |
+| UI helpers, proxy, security and browser-checkpoint regressions | 32 |
 | Core netting | 10 |
 | Agent behavior | 14 |
 | Legacy integration and dependency protections | 58 |
-| **Total** | **250** |
+| **Total** | **256** |
 
 The browser journeys cover desktop and mobile layouts, exact funded groups, zero available cash after reservation, repeat and identical briefs, independent fresh workspaces, reopening original History and private results, and session isolation. These two passes use actual vault/token Wasm and the native private worker locally; they are separate from hosted testnet acceptance.
 
@@ -51,6 +51,10 @@ The live browser continuation verifies the already completed original and fresh 
 
 ## Release status
 
-Both `NSEVEjk0/ach` and `NSEVEjk0/ach-v4` are verified private. The candidate has passed live AI work, public/private clearing, withdrawals and independent token-backing checks. Its browser has recovered the original interrupted request and verified one complete three-bill group clearing for 0.020 tUSDC. The remaining browser journey and hosted acceptance are being completed before site publication. The historical November 10 release evidence remains available while the candidate is verified.
+Both `NSEVEjk0/ach` and `NSEVEjk0/ach-v4` are verified private. The candidate has passed live AI work, public/private clearing, withdrawals and independent token-backing checks. Its local live-browser continuation completes 64 checks. Production now serves revision 2; preview, production and public smoke reports each pass 28 checks. The complete fresh hosted acceptance journey and final backing check are being completed before exporting the final evidence. The historical November 10 release evidence remains available separately.
+
+An interrupted hosted verifier had saved its cookie and request without retaining the private browser key. The existing private round remained READY with all three approvals; permissionless settlement completed its original 0.020 tUSDC payment without another purchase or worker execution. The verifier now saves one atomic checkpoint containing the session cookie, exact requests and browser keys before forwarding work or owner transfers. Checkpoints reject substituted deployments, sessions and origins. Six regressions cover recovery, damaged state, credential redaction and transient read retries; the complete affected suite passes 32 tests.
+
+The independent-agent guide now documents the vault sponsor's registration authorization and the agent's separate owner/trading signers. The refreshed client archive installs and imports in an isolated offline project. Its SHA-256 is `8fdf5677d77682168d0ffac1963c6e3aa9e6310489fabc99a97668e7c6bb98b4`. Contract, token and pinned private-worker binaries are unchanged.
 
 Mainnet token transfers remain untested. These engineering checks establish their covered cases and do not constitute an independent security audit.

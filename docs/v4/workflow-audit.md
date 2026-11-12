@@ -1,5 +1,7 @@
 # ACH v4 workflow review — 10 November 2026
 
+This is the historical workflow-revision-1 review. The [correction record](workflow-fixes.md) and [current validation](validation-20261112.md) describe its replacement. The [November 10 archive](history/20261110/README.md) retains the deployment and release evidence referenced here.
+
 **The committed settlement works in the tested cases. The main payment-exploit window is earlier: work and accepted invoices can exist before payment funds are irrevocably reserved.** The current implementation therefore provides stronger final settlement than pre-delivery payment assurance.
 
 This is an engineering workflow review of the hackathon implementation. It is not an independent security audit. The adversarial cases ran in isolated stores against the existing compiled NEAR Wasm and service code. No attack was executed against the public deployment. No financial or coordinator fixes from this review have been implemented.

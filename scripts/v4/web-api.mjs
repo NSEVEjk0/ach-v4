@@ -26,6 +26,7 @@ const request=(name,method,route,body)=>({name,method,url:url(route),headers:pat
 
 if(process.argv.includes('--prepare')){
  loadPrivateEnvironment();
+ for(const field of ['bypass_revoked_at','preview_browser_verified_at','production_browser_verified_at','public_browser_verified_at'])delete state[field];
  for(const name of ['browser-local','browser-ui-fixtures']){
   const report=JSON.parse(readFileSync(privatePath(name,'report.json'),'utf8'));
   assert.ok(report.passed&&report.vault===config.vault&&report.code_hash===config.code_hash,'PASSED_CURRENT_BROWSER_JOURNEYS_REQUIRED');
@@ -68,7 +69,7 @@ if(process.argv.includes('--prepare')){
  assert.ok(typeof secret==='string'&&/^[A-Za-z0-9_-]{20,}$/.test(secret),'PROJECT_BYPASS_RESPONSE_REQUIRED');
  save('browser.env','ACH_V4_PREVIEW_BYPASS='+secret+'\n');
  save('bypass-revoke-body.json',{revoke:{secret,regenerate:false}});
- state.bypass_created=true;record();console.log(JSON.stringify({browser_env:path.join(directory,'browser.env'),bypass_secret_printed:false}));
+ state.bypass_created=true;delete state.bypass_revoked_at;record();console.log(JSON.stringify({browser_env:path.join(directory,'browser.env'),bypass_secret_printed:false}));
 }else if(process.argv.includes('--record-preview')||process.argv.includes('--record-production')){
  const phase=process.argv.includes('--record-preview')?'preview':'production',response=read(phase+'-response.json');
  if(response.error)throw new Error('VERCEL_DEPLOYMENT_'+String(response.error.code));

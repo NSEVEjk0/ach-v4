@@ -18,5 +18,18 @@
       "bytes": 375649,
       "sha256": "d88bf904db9899a5a9ea56bea1ba7e417a26058a53fca00210e5f20e1384e26a"
     }
-  }
+  },
+  "sdk_archives": {
+    "client": {
+      "path": "web/public/sdk/ach-client-4.0.0.tgz",
+      "bytes": 20940,
+      "sha256": "8fdf5677d77682168d0ffac1963c6e3aa9e6310489fabc99a97668e7c6bb98b4"
+    },
+    "intents": {
+      "path": "web/public/sdk/ach-intents-4.0.0.tgz",
+      "bytes": 9698,
+      "sha256": "d7905562e499ee4aef9e95d22bd008bbc38455465a4f4c24146d977634b837f2"
+    }
+  },
+  "sdk_documentation_refreshed_at": "2026-11-12T17:54:40.877176+00:00"
 }
