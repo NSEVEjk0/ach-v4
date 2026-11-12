@@ -1,198 +1,467 @@
 {
   "kind": "bounded-testnet-financial-fixtures",
-  "vault": "ach-vault-v4-650fb521.testnet",
-  "code_hash": "BqVoRKp6s86q1K6VEBj9KCnbVktYEGjMrA72utYVAyko",
+  "workflow_revision": 2,
+  "vault": "ach-vault-v4r2-e53eefae.testnet",
+  "code_hash": "3Mh1JPqCL6kVvT8qZLmU6eexd3CyzMDAqGBatjUdLQCJ",
   "source_service_work": false,
   "participant_limit": 12,
   "invoice_limit": 48,
-  "native_account_funding_cap": "3360000000000000000000000",
+  "native_account_funding_cap": "9360000000000000000000000",
   "rounds": [
     {
       "fixture_index": 0,
-      "round_id": "scale-round-9e50719f0f3d2e67-0rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
+      "round_id": "pg-8c78276bf975fdfeaa9569cf0a29aa93-scale-b68a0760dbbbe597-a3-0ggggggggggggggggggggggggggggggggg",
       "participants": 12,
       "invoices": 48,
-      "record_id_bytes": 96,
+      "group_id_bytes": 96,
+      "purchase_id_bytes": 96,
+      "invoice_id_bytes": 69,
       "participant_id_bytes": 64,
       "amount_digits": 29,
       "zero_funding": true,
       "propose": {
-        "tx_hash": "DyRxAsncfm7SnGFwBE1TzNcxoULEYqff6LgAuf7VFKuf",
-        "gas_burnt": "27419957850516",
-        "tokens_burnt": "2719677528801600000000"
+        "tx_hash": "6yq4RWWXzC2KxDMhjxZPL5p8E3srzQdBmgp7u2ZRRNVG",
+        "gas_burnt": "59154035466575",
+        "tokens_burnt": "5893085290407500000000"
       },
       "approvals": [
         {
-          "tx_hash": "4w81GhoYZhyFoWV6CGN56G5hf7pxKvRgXeMFKJBqD7W2",
-          "gas_burnt": "14741946868632",
-          "tokens_burnt": "1451876430613200000000"
+          "tx_hash": "Gt8MRDYzTgEgBBhgnmLq51KEsRYBq8fPr74amneMsJS",
+          "gas_burnt": "27113982078931",
+          "tokens_burnt": "2689079951643100000000"
         },
         {
-          "tx_hash": "EKynjd9PSSLRxvXKBYMHm6UhgFcte2shBg1LtH9Z33nB",
-          "gas_burnt": "14713265068872",
-          "tokens_burnt": "1449008250637200000000"
+          "tx_hash": "5jBqHLh2AJy9B1wP1XGRmZW3cFHZve9c88DboLfYVTqz",
+          "gas_burnt": "27226261184395",
+          "tokens_burnt": "2700307862189500000000"
         },
         {
-          "tx_hash": "4ca1NNqFtNaPAZEQhpuXxgyxoMA3NZE7ey8fi7bFXGdv",
-          "gas_burnt": "14832765447852",
-          "tokens_burnt": "1460958288535200000000"
+          "tx_hash": "793MnYZoCGA9Tgs8mmLhbKnHMX4ifeXCRps1g5Lg7Ct",
+          "gas_burnt": "27432441981115",
+          "tokens_burnt": "2720925941861500000000"
         },
         {
-          "tx_hash": "FWs8PQwPtyG66KrMXVXYnnqXaRUJjUFC8tJFpCaAgQB1",
-          "gas_burnt": "15111639124728",
-          "tokens_burnt": "1488845656222800000000"
+          "tx_hash": "3kyw6pA1LwDNtUzAH9MjyksKhZ5GcRSCApLki9Jko6QX",
+          "gas_burnt": "26852958763543",
+          "tokens_burnt": "2662977620104300000000"
         },
         {
-          "tx_hash": "7aXeGJi1x7ufGdMzqoDyy6qKeQ1W4VEUGfq3z1nrZxTf",
-          "gas_burnt": "15009878228292",
-          "tokens_burnt": "1478669566579200000000"
+          "tx_hash": "EVkLKsocTGyuv2efytyGdntmHTt3NRF8kqF42q2qskAd",
+          "gas_burnt": "26967743017903",
+          "tokens_burnt": "2674456045540300000000"
         },
         {
-          "tx_hash": "7MibJhCQxZksLnp89mnVSVXFJNjHJ7ZvAegpKUAQhgns",
-          "gas_burnt": "15032181723852",
-          "tokens_burnt": "1480899916135200000000"
+          "tx_hash": "4byJAmgrTVf6XLpuW9Gyv9TPbtYBsbV3yosrUwbLmLV9",
+          "gas_burnt": "27568147476187",
+          "tokens_burnt": "2734496491368700000000"
         },
         {
-          "tx_hash": "594G62rNvjipcHK5SqvFfTLDipbuMQ1PnAu153DAQrUm",
-          "gas_burnt": "15307761908460",
-          "tokens_burnt": "1508457934596000000000"
+          "tx_hash": "BxkEHFLQFE85ho14oY6WnxMUTmJiqkWarGHHarb2jATv",
+          "gas_burnt": "27789337130983",
+          "tokens_burnt": "2756615456848300000000"
         },
         {
-          "tx_hash": "5zWF9EpTUnHhKFLoW2qqjjU7zVuVjxUJzcJz3PBk5W9L",
-          "gas_burnt": "15329343882576",
-          "tokens_burnt": "1510616132007600000000"
+          "tx_hash": "GspwucHXjGRTYfznAV6Zx3EPjr7dUSuGUvr5hDZ2Vvdc",
+          "gas_burnt": "26760127269523",
+          "tokens_burnt": "2653694470702300000000"
         },
         {
-          "tx_hash": "8gvKuvJS1nQF8d3vaffpasZs75j4tgL269AJFJXNcpzz",
-          "gas_burnt": "15435307416660",
-          "tokens_burnt": "1521212485416000000000"
+          "tx_hash": "4o4s7rLFeYeR9j7PQtG5u3UawYztPdoEL9zcpEBF1aNC",
+          "gas_burnt": "28035525265171",
+          "tokens_burnt": "2781234270267100000000"
         },
         {
-          "tx_hash": "2F3chhcFmXit6b6k3gaZSmNAkDAWvrFGfViPRcGSxer3",
-          "gas_burnt": "15627679255788",
-          "tokens_burnt": "1540449669328800000000"
+          "tx_hash": "BRifpWPB64dqcyAmFVztZ6SCbFdqPu48KAkW5hZtkmNk",
+          "gas_burnt": "27678644885539",
+          "tokens_burnt": "2745546232303900000000"
         },
         {
-          "tx_hash": "6qBfkytmuwayy4cRePcF9aPAwZnVotrCACW1Z9T7CMi5",
-          "gas_burnt": "57639171941088",
-          "tokens_burnt": "5741598937858800000000"
+          "tx_hash": "7bA6kEeyzweE5pAvJ1ZFW2wesubHHyjD8DhFXZDhqjdh",
+          "gas_burnt": "27338145782395",
+          "tokens_burnt": "2711496321989500000000"
         },
         {
-          "tx_hash": "A5bvawMg8o4zRSnWdSqgmqHXec2TzJKSoh64dg2dh9c1",
-          "gas_burnt": "15617702290620",
-          "tokens_burnt": "1539451972812000000000"
+          "tx_hash": "AYdWEs5k7C6b9eodZhSosQp4mNTmfxzLM2JfRG21Na8P",
+          "gas_burnt": "26728780862671",
+          "tokens_burnt": "2650559830017100000000"
+        }
+      ],
+      "receipt_batches": [
+        {
+          "tx_hash": "2fVRi5MCtq2neQyyeQvARviipTS8ZVxwvdmbr4HTfjYh",
+          "gas_burnt": "49966535287644",
+          "tokens_burnt": "4974335272514400000000"
+        },
+        {
+          "tx_hash": "3ip7ogRMTWwBLFNMtsZ1rhxjHkPuThSnnUYYzaNuDVE5",
+          "gas_burnt": "49859417086148",
+          "tokens_burnt": "4963623452364800000000"
+        },
+        {
+          "tx_hash": "26BGJSAK999mbukdXcbwQ8n7DwfxiHjKZjKTNFnRFipH",
+          "gas_burnt": "49848041768828",
+          "tokens_burnt": "4962485920632800000000"
+        },
+        {
+          "tx_hash": "BWHX3EFAr6g62bePewSNHFpeoNJjfFvLbuQRSNDckoxi",
+          "gas_burnt": "49848008858588",
+          "tokens_burnt": "4962482629608800000000"
+        },
+        {
+          "tx_hash": "4e8REHZKjoYhA1QdNFtF13L62NHJaXQB6kuKkPBffJWR",
+          "gas_burnt": "49784218223948",
+          "tokens_burnt": "4956103566144800000000"
+        },
+        {
+          "tx_hash": "MVGCc58GNYPag3uwbDAfrkyceEtRggamhKN6REboxMa",
+          "gas_burnt": "49936978223948",
+          "tokens_burnt": "4971379566144800000000"
+        },
+        {
+          "tx_hash": "HuZZvmhaJ9LxGTUb2HxM7mndTRPavwWpy9jtPxE2uMKh",
+          "gas_burnt": "49845679493228",
+          "tokens_burnt": "4962249693072800000000"
+        },
+        {
+          "tx_hash": "DvJhdaXHBCBUtEgGDCoSK55mwC3A6zahgUBk7kXtdFDM",
+          "gas_burnt": "49786407720788",
+          "tokens_burnt": "4956322515828800000000"
+        },
+        {
+          "tx_hash": "Gni1HqhDV2xP7EsMrtixsdYfJsDAS2h8GVZnih37dxgJ",
+          "gas_burnt": "49934657086148",
+          "tokens_burnt": "4971147452364800000000"
+        },
+        {
+          "tx_hash": "7kLY9a4z2GDaFiVn7hZ3CEw3cB7kRpbDRTkzML2roYgj",
+          "gas_burnt": "49783230916748",
+          "tokens_burnt": "4956004835424800000000"
+        },
+        {
+          "tx_hash": "C71oQ5cPcTtFAG1pqov8p35T9SAWvNh5g53TKfosYkkf",
+          "gas_burnt": "49925537086148",
+          "tokens_burnt": "4970235452364800000000"
+        },
+        {
+          "tx_hash": "EKDcDNKM7zk9EJbKLyhPMmiWJTqF34bHccDnMVyVPfNt",
+          "gas_burnt": "49955544321572",
+          "tokens_burnt": "4973236175907200000000"
+        },
+        {
+          "tx_hash": "E19QnNy1epHfMozBoq2KBkp3hwn3djn7cq93HbPhWnGa",
+          "gas_burnt": "28193735310704",
+          "tokens_burnt": "2797055274820400000000"
+        },
+        {
+          "tx_hash": "5iAXJ2qmzCrf4U82fcC5UBXhhtJayEt3ckJy5T6dHvWK",
+          "gas_burnt": "29620327491875",
+          "tokens_burnt": "2939714492937500000000"
+        },
+        {
+          "tx_hash": "DrMaqerZd6VDUfAbfcoE82uqxFKWAJXW7mfDKR4Wt1Dp",
+          "gas_burnt": "34189474165821",
+          "tokens_burnt": "3396629160332100000000"
+        },
+        {
+          "tx_hash": "2prrzttxtFJP6JYrJ3zEaB24iFjdfrScKDZgTaH4PbD8",
+          "gas_burnt": "28191531004256",
+          "tokens_burnt": "2796834844175600000000"
+        },
+        {
+          "tx_hash": "2dmHKfUysgrLQbtNKi42s6oBjv72UCbLFvhCxqcW5ofc",
+          "gas_burnt": "28193814295280",
+          "tokens_burnt": "2797063173278000000000"
+        },
+        {
+          "tx_hash": "HSKH9kenndS81X7JbLkJn4tTNaxZKnXsWDG6AoYuqmP2",
+          "gas_burnt": "40292818204205",
+          "tokens_burnt": "4006963564170500000000"
+        },
+        {
+          "tx_hash": "BNVXwC2SAx8YT6nyRKt561NvEEeELKNQeemDodFmF1Nf",
+          "gas_burnt": "28246267459376",
+          "tokens_burnt": "2802308489687600000000"
+        },
+        {
+          "tx_hash": "4Epdb4svMKMACLCxpSYFEGR6Wh78u14gsa1goTLvRweW",
+          "gas_burnt": "28189274041424",
+          "tokens_burnt": "2796609147892400000000"
+        },
+        {
+          "tx_hash": "ANxEHJVdowr756WVjnqBkU9gbHd1QULWoeUc8tiT4KUm",
+          "gas_burnt": "29718199446232",
+          "tokens_burnt": "2949501688373200000000"
+        },
+        {
+          "tx_hash": "5hzW2PtKwRcRHywpLDJujpw5eFnSyHSAQgk8YZyV6nU5",
+          "gas_burnt": "119720919394752",
+          "tokens_burnt": "11949773683225200000000"
+        },
+        {
+          "tx_hash": "DPdGmrpmEES4vAiMduBidPJJf6H6EVaBuhUSRbhTzDaS",
+          "gas_burnt": "29718123752680",
+          "tokens_burnt": "2949494119018000000000"
+        },
+        {
+          "tx_hash": "2mhxir3fQSFmZTKAnL75BxTupdracRoV52xSCMYCVe4V",
+          "gas_burnt": "28191531004256",
+          "tokens_burnt": "2796834844175600000000"
         }
       ],
       "settle": {
-        "tx_hash": "G2LFoZyEGNfyD1qWhHmrPHfQTejyTPb3KcyNzzfTREjL",
-        "gas_burnt": "53756985539489",
-        "tokens_burnt": "5353380297698900000000"
+        "tx_hash": "9RgvaPrpUZ8BEs6BHaewJhgaCfCc81Nau7rPTYr2RHXc",
+        "gas_burnt": "67533146683503",
+        "tokens_burnt": "6730996412100300000000"
       },
-      "accumulated_invoices": 58,
-      "storage_bytes": 1292700,
-      "maximum_operation_gas": "57639171941088"
+      "accumulated_invoices": 144,
+      "storage_bytes": 2454151,
+      "maximum_operation_gas": "119720919394752"
     },
     {
       "fixture_index": 1,
-      "round_id": "scale-round-9e50719f0f3d2e67-1rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
+      "round_id": "pg-8c78276bf975fdfeaa9569cf0a29aa93-scale-b68a0760dbbbe597-1gggggggggggggggggggggggggggggggggggg",
       "participants": 12,
       "invoices": 48,
-      "record_id_bytes": 96,
+      "group_id_bytes": 96,
+      "purchase_id_bytes": 96,
+      "invoice_id_bytes": 69,
       "participant_id_bytes": 64,
       "amount_digits": 29,
       "zero_funding": true,
       "propose": {
-        "tx_hash": "C5Wi74v3z1J3xyL6KxnxK936GTsFjUuhZHxF3zP6Ddup",
-        "gas_burnt": "27483146522568",
-        "tokens_burnt": "2725996396006800000000"
+        "tx_hash": "HNAAJo5rRrBcauzntdW5rh1MJgTHprCViMk8X3VFF5Et",
+        "gas_burnt": "56396694471119",
+        "tokens_burnt": "5617351190861900000000"
       },
       "approvals": [
         {
-          "tx_hash": "GxynBY8baftvHRNpB5AN1g8JdQjmp39Xr6MW6zXkgaTb",
-          "gas_burnt": "14836035742104",
-          "tokens_burnt": "1461285317960400000000"
+          "tx_hash": "FPTgjmeTKepR2E1g6KNwYEFUKgkcnPztf8obCmaGGBAe",
+          "gas_burnt": "26789996628427",
+          "tokens_burnt": "2656681406592700000000"
         },
         {
-          "tx_hash": "5sdAcHmQeSKNPW8PG9HaREDh83x69Q26owfhzHW46Gkq",
-          "gas_burnt": "14716713078420",
-          "tokens_burnt": "1449353051592000000000"
+          "tx_hash": "9TKc75j7HArHMfhHtg8sKWcNrS3HSfEHWxXWCuvkqjCp",
+          "gas_burnt": "26781209641243",
+          "tokens_burnt": "2655802707874300000000"
         },
         {
-          "tx_hash": "JCLpRp3XbxYQVpAxxmNfTrbZpjfNswXBeBv92ZdXadTr",
-          "gas_burnt": "14750132593476",
-          "tokens_burnt": "1452695003097600000000"
+          "tx_hash": "Btm35EGa9xNoPombjtHkc8MjDzCJ6qGve1mwgYWKkiCG",
+          "gas_burnt": "27149066684755",
+          "tokens_burnt": "2692588412225500000000"
         },
         {
-          "tx_hash": "9FUSY7uHoZykDxG4pKKCjSDReAEowzj58uCbMyUJWiEP",
-          "gas_burnt": "15017780102316",
-          "tokens_burnt": "1479459753981600000000"
+          "tx_hash": "GEs3NHFqwy2ks6Dft4TU6Ek25MYtDzR6NgFYvAxe3pqK",
+          "gas_burnt": "27808763258887",
+          "tokens_burnt": "2758558069638700000000"
         },
         {
-          "tx_hash": "9pc5xF8nQmSHptHuGn3HtxivtGqN7UNtVMXcsEUBqKtp",
-          "gas_burnt": "15035523597876",
-          "tokens_burnt": "1481234103537600000000"
+          "tx_hash": "Cn566jEjFqBBturTqoWMsaaKZNapKPwnwTbXzHASg413",
+          "gas_burnt": "27920663267143",
+          "tokens_burnt": "2769748070464300000000"
         },
         {
-          "tx_hash": "743AbZERW7Hja4otMWeVoKcWHnSSq6WvJ6ZzXuiQ24AK",
-          "gas_burnt": "15115299405324",
-          "tokens_burnt": "1489211684282400000000"
+          "tx_hash": "BFcSTjSgaSwgMaUorezRQK4wpxFeF5asTXnbaJW54Ys4",
+          "gas_burnt": "27224857419535",
+          "tokens_burnt": "2700167485703500000000"
         },
         {
-          "tx_hash": "FR6t34oG3TjjwgE926HkeYBVzYm79UvfszmA5G3rHB8r",
-          "gas_burnt": "15311209918008",
-          "tokens_burnt": "1508802735550800000000"
+          "tx_hash": "EjkrL5f9K1PG7T8Kri7gtJuQx3uwddLjyJwPKrRDygVc",
+          "gas_burnt": "27458016886843",
+          "tokens_burnt": "2723483432434300000000"
         },
         {
-          "tx_hash": "AoiUxj9wXAGHo6B4mf6GPf9tFBELfrHLJvf6yQyAodix",
-          "gas_burnt": "15337351892124",
-          "tokens_burnt": "1511416932962400000000"
+          "tx_hash": "FgTQhchEskZzzqp1gjkT1uCt9BrGhkeLWQ7q4q8pos1A",
+          "gas_burnt": "27680695479739",
+          "tokens_burnt": "2745751291723900000000"
         },
         {
-          "tx_hash": "3YK7QAvXdJwgWLTvJo5hcdcVP5Dswt3Mi53CdrZeQfMP",
-          "gas_burnt": "15438755426208",
-          "tokens_burnt": "1521557286370800000000"
+          "tx_hash": "DsQYX8QL9AZM5qupCibJjpx5Sc5oosQDqgpNhJqEFvJi",
+          "gas_burnt": "26908807691911",
+          "tokens_burnt": "2668562512941100000000"
         },
         {
-          "tx_hash": "9SM5am8cF9HaxKD9NWHEKa2wdxAzzY6UVmpx9XJ4QSu8",
-          "gas_burnt": "15625873205856",
-          "tokens_burnt": "1540269064335600000000"
+          "tx_hash": "8N2Le7QL2sYDboUrJEbyMJhpj8joKSuh4yXh4gjqgPSw",
+          "gas_burnt": "27353722521223",
+          "tokens_burnt": "2713053995872300000000"
         },
         {
-          "tx_hash": "DeB8z8sXWDozFPY6NwJAked5FnLCVwNbSX7arDuKNbjc",
-          "gas_burnt": "57986717080722",
-          "tokens_burnt": "5776353451822200000000"
+          "tx_hash": "HaiZZpxSCzUKURQDpCVSdFGTek5cdbQGRkw8NjGLvhTV",
+          "gas_burnt": "26980334511715",
+          "tokens_burnt": "2675715194921500000000"
         },
         {
-          "tx_hash": "D9CzkUCccHywGSbsuKHALkXCrHfUShkd6pDDyEusXTnW",
-          "gas_burnt": "15630964359648",
-          "tokens_burnt": "1540778179714800000000"
+          "tx_hash": "Em1z5ULzikQPqaH98T6YxdTWbX5VgFWX8SfRDvRpQUYS",
+          "gas_burnt": "27579147867031",
+          "tokens_burnt": "2735596530453100000000"
+        }
+      ],
+      "receipt_batches": [
+        {
+          "tx_hash": "9ya2YnE81hogYcUYKVBZDaPeZVepi1d4TUSt6hskQ8mN",
+          "gas_burnt": "50003588586524",
+          "tokens_burnt": "4978040602402400000000"
+        },
+        {
+          "tx_hash": "B67MRqmX15K4JNETSwpBwwNGaUVQiURgLJ47JjJV2UBf",
+          "gas_burnt": "49878126057068",
+          "tokens_burnt": "4965494349456800000000"
+        },
+        {
+          "tx_hash": "7kNVbBguxqzkhR3PhkXPmUarK8XnioJwo1xgcEao7sdE",
+          "gas_burnt": "49873500236588",
+          "tokens_burnt": "4965031767408800000000"
+        },
+        {
+          "tx_hash": "GoZqcEM1Y5srohW23uMVeWqTfpo6rGK7VKABLnZvCeST",
+          "gas_burnt": "49932775300052",
+          "tokens_burnt": "4970959273755200000000"
+        },
+        {
+          "tx_hash": "8TM6JbvBMyAaB1pGR6BHu9hLAHGT9fFAxeWNmUAfFvrm",
+          "gas_burnt": "49873552892972",
+          "tokens_burnt": "4965037033047200000000"
+        },
+        {
+          "tx_hash": "4cJ4bFjiedBLzZSyHuG5Ur2J77ZaL7ekvJjxCgadgGaz",
+          "gas_burnt": "49926137698028",
+          "tokens_burnt": "4970295513552800000000"
+        },
+        {
+          "tx_hash": "9xW8K6Z1yiAnjZTzmAkJLD9hcu9rC3hzM9T4CTQV1cAU",
+          "gas_burnt": "49875961242908",
+          "tokens_burnt": "4965277868040800000000"
+        },
+        {
+          "tx_hash": "Ctm8caqhjeh4vYWhfSqcYQMdrNP6VnG66KiWwzSowV9N",
+          "gas_burnt": "49802968332668",
+          "tokens_burnt": "4957978577016800000000"
+        },
+        {
+          "tx_hash": "CxfRnKQMA7U8xgxUZc8NNT2ChjaDvJicWhHxFGA4gJN4",
+          "gas_burnt": "49937381374388",
+          "tokens_burnt": "4971419881188800000000"
+        },
+        {
+          "tx_hash": "6xsT6yCwBoLg9xHecja1Q11LqPR1U5hwfiS13HAxkfLN",
+          "gas_burnt": "50000415073508",
+          "tokens_burnt": "4977723251100800000000"
+        },
+        {
+          "tx_hash": "GraTCiuAarMQhPQDpvLNfKcjJUTyMgKs5ig92fcqKHLF",
+          "gas_burnt": "49928343649988",
+          "tokens_burnt": "4970516108748800000000"
+        },
+        {
+          "tx_hash": "Ea9sF7Zpv9Ftz6eNGC5bpSs72dQ5zJHzczYt8sLApAhj",
+          "gas_burnt": "49791738106652",
+          "tokens_burnt": "4956855554415200000000"
+        },
+        {
+          "tx_hash": "2K3sGVfzJgMEH5ahEjz9UTD2TQidDHGJ9RZ3jUJvCGJT",
+          "gas_burnt": "28195949064472",
+          "tokens_burnt": "2797276650197200000000"
+        },
+        {
+          "tx_hash": "31XmqcwopovVYBnPg8kRZzcMQnc7YUptXruThVBHgWfh",
+          "gas_burnt": "29630949393149",
+          "tokens_burnt": "2940776683064900000000"
+        },
+        {
+          "tx_hash": "G2UTW8pmBwdtkjVDjyGZ8ggEKcmgmXrPT6fCrZQMg3Hb",
+          "gas_burnt": "34201499034629",
+          "tokens_burnt": "3397831647212900000000"
+        },
+        {
+          "tx_hash": "DFzuzcacQkkEAvejkRFKiMaYt4TdTeQRGHms39LUEWG3",
+          "gas_burnt": "28202851593928",
+          "tokens_burnt": "2797966903142800000000"
+        },
+        {
+          "tx_hash": "FiXxsRzSuYyQRTA6aaW73XRZXgYHcBniqMR4aKFBgdFG",
+          "gas_burnt": "28191454884952",
+          "tokens_burnt": "2796827232245200000000"
+        },
+        {
+          "tx_hash": "FEcNn9KtFoL6vDY1j2ABZVGJFEykc3zSxX6XGfK1xx8a",
+          "gas_burnt": "35725445906893",
+          "tokens_burnt": "3550226334439300000000"
+        },
+        {
+          "tx_hash": "38LBNrFuirEziaXq7aGp5ahSwg9ypyH2UYsdoXAcsqT8",
+          "gas_burnt": "116268170770668",
+          "tokens_burnt": "11604498820816800000000"
+        },
+        {
+          "tx_hash": "H9JeJ5EVYkpCYFi728nxLruaYzAYy7GWLbXvhP7Jgwja",
+          "gas_burnt": "28202848302904",
+          "tokens_burnt": "2797966574040400000000"
+        },
+        {
+          "tx_hash": "GhRDUgkbWojejYtfXU3UUz1ac4FXg7v2oWQ7XxAXqjn6",
+          "gas_burnt": "29721180008592",
+          "tokens_burnt": "2949799744609200000000"
+        },
+        {
+          "tx_hash": "HWR9NBX32TU34pT8d7XaLi3JZZQVXafackeR7wXZvNVi",
+          "gas_burnt": "35815633739024",
+          "tokens_burnt": "3559245117652400000000"
+        },
+        {
+          "tx_hash": "3tM9PyF6nx9cCpSe5cM74bfKNcjWGFkQmuNq6VfehD5o",
+          "gas_burnt": "29725644568896",
+          "tokens_burnt": "2950246200639600000000"
+        },
+        {
+          "tx_hash": "9eeSRaXcbGQXaG3dgjmSkwcLxYvJG7boR2qm7ruBQgbR",
+          "gas_burnt": "28243888302904",
+          "tokens_burnt": "2802070574040400000000"
         }
       ],
       "settle": {
-        "tx_hash": "DACwsXbgmHQo6DiqvjBugdK8oxnhFBMsZB3jzDVn6Fzw",
-        "gas_burnt": "53996723634971",
-        "tokens_burnt": "5377354107247100000000"
+        "tx_hash": "aWH5Hkhy4rLPaYL5zQgWuUjoe1N1q8yyfGGHN911LZj",
+        "gas_burnt": "67593785348823",
+        "tokens_burnt": "6737060278632300000000"
       },
-      "accumulated_invoices": 106,
-      "storage_bytes": 1562877,
-      "maximum_operation_gas": "57986717080722"
+      "accumulated_invoices": 192,
+      "storage_bytes": 2851678,
+      "maximum_operation_gas": "116268170770668"
     }
   ],
   "passed": true,
   "history_before": {
-    "accounts": 25,
-    "invoices": 10,
-    "rounds": 4
+    "accounts": 13,
+    "invoices": 96,
+    "rounds": 0
   },
+  "expired_attempts": [
+    {
+      "fixture_index": 0,
+      "attempt": 0,
+      "group_id": "pg-8c78276bf975fdfeaa9569cf0a29aa93-scale-b68a0760dbbbe597-0gggggggggggggggggggggggggggggggggggg",
+      "reason": "expired-incomplete-financial-fixture"
+    },
+    {
+      "fixture_index": 0,
+      "attempt": 1,
+      "group_id": "pg-8c78276bf975fdfeaa9569cf0a29aa93-scale-b68a0760dbbbe597-a1-0ggggggggggggggggggggggggggggggggg",
+      "reason": "expired-incomplete-financial-fixture"
+    },
+    {
+      "fixture_index": 0,
+      "attempt": 2,
+      "group_id": "pg-8c78276bf975fdfeaa9569cf0a29aa93-scale-b68a0760dbbbe597-a2-0ggggggggggggggggggggggggggggggggg",
+      "reason": "expired-incomplete-financial-fixture"
+    }
+  ],
   "backing": {
     "actual_token_balance_requires_independent_ft_balance_of": true,
     "claims_equal_tracked_custody": true,
     "decimals": 6,
-    "native_sponsor_headroom": "489053399270141800000356",
+    "native_sponsor_headroom": "7517040986233030000000619",
     "pending_withdrawals": "0",
-    "token": "ach-usdc-v4-650fb521.testnet",
-    "total_balances": "3960000",
-    "tracked_token_custody": "3960000"
+    "token": "ach-usdc-v4r2-e53eefae.testnet",
+    "total_balances": "0",
+    "tracked_token_custody": "0"
   },
-  "finished_at": "2026-11-10T19:13:30.752Z"
+  "finished_at": "2026-11-12T10:58:18.685Z"
 }

@@ -1,83 +1,83 @@
 {
   "public_flow": {
-    "session_id": "69f4ea8cc2d5485ea21bb3a4f306e91d",
+    "session_id": "efcd427eda5b8239de2e1d671704c1ab",
     "actual_llm": {
       "provider": "NEAR AI Cloud",
       "model": "z-ai/glm-5.3-flash",
-      "response_id": "31f71ec4c4f64c5e9ee283d96c8feda8",
-      "response_hash": "e5075dc804eee825e8e8a429a2fbb7caac990a90fb85934371ae1154d34edcbc"
+      "response_id": "ff19b726e0a745a5b014a6bd34f9a1f8",
+      "response_hash": "9b054a98e4b1990bebe373e5d81d7a20dc2593b0fecad8a0e02850d378ecdaba"
     },
-    "artifact_sha256": "b0094505ca6a8036884f0627b6de7e794d9c32db6f40eda2b552b3679d35b4c1",
+    "artifact_sha256": "121d6f23a50523ade356c1c9c8ed3d08c6af2eced53ecbdf09686b199108cba9",
     "public_round": {
       "approvals": [
         {
-          "account_id": "a-69f4ea8cc2d5.ach-v4-demo-650fb521.testnet",
-          "activity_sequence": 5,
-          "approved_at_ms": 1794335765050,
+          "account_id": "a-efcd427eda5b.ach-v4r2-demo-e53eefae.testnet",
+          "activity_sequence": 4,
+          "approved_at_ms": 1794481581257,
           "authority": {
             "budget_charge": "0",
             "epoch": 1,
-            "key": "26c0b841aeb18b97b528c0dd1ffcc07bcc24d8f36df40ff444a37089f862d01d",
+            "key": "1d950502b91c579031f23da1b7bf3b844ed8620062225e67778974f121eb65fe",
             "owner": false
           },
           "expected_net": "20000",
           "required": "0"
         },
         {
-          "account_id": "r-69f4ea8cc2d5.ach-v4-demo-650fb521.testnet",
-          "activity_sequence": 6,
-          "approved_at_ms": 1794335769358,
+          "account_id": "r-efcd427eda5b.ach-v4r2-demo-e53eefae.testnet",
+          "activity_sequence": 5,
+          "approved_at_ms": 1794481584945,
           "authority": {
             "budget_charge": "0",
             "epoch": 1,
-            "key": "05cda65df792c72e8e358d2d04ff90aa55a84fbb4c3c91d91736fb03975eba35",
+            "key": "039bca50ccdc97b69f162dd44e8e0e44b0211f0a37a90b3245f007d85e4925ca",
             "owner": false
           },
           "expected_net": "-20000",
           "required": "20000"
         },
         {
-          "account_id": "v-69f4ea8cc2d5.ach-v4-demo-650fb521.testnet",
-          "activity_sequence": 5,
-          "approved_at_ms": 1794335773658,
+          "account_id": "v-efcd427eda5b.ach-v4r2-demo-e53eefae.testnet",
+          "activity_sequence": 4,
+          "approved_at_ms": 1794481589792,
           "authority": {
             "budget_charge": "0",
             "epoch": 1,
-            "key": "70e20b66bab12403d311e70a929d7b88c1a23c40e8071bb44ac45f3cf7154deb",
+            "key": "a769ec825f56ae6aa18ff4c46fce7cd0457f352decd59708bbdeff4e8191ffac",
             "owner": false
           },
           "expected_net": "0",
           "required": "0"
         }
       ],
-      "created_at_ms": 1794335760939,
+      "created_at_ms": 1794481581257,
       "gross_invoice_volume": "280000",
-      "hash": "62dc9305f8f0bf995aed6bbbbee17999bfdf206f55f117204008db2de0f9a574",
+      "hash": "e16740b4f819aac7682ebb6ab5dc0342ed00310089f0e370e0c670a7bdcafb10",
       "input": {
-        "deadline_ms": 1794336059000,
-        "id": "round-cb97a7680d3a7905ec2ae20e6cde6d91",
-        "input_commitment": "",
+        "deadline_ms": 1794482475794,
+        "id": "pg-be5a3222915fa7067635386a77783765-4b373d6939de8b9a99fd526ed607bee6",
+        "input_commitment": "ad3151d3c3222f072575022ca780b56578ad639433ef6e2e5a08b2d9f1b523a0",
         "invoice_hashes": [
-          "4c98563b546848d6d5713417e5edc62e0bdfdddd57642ba581cbfbe9ea8f935b",
-          "c20c9d4618f30f60f1a721cb30924957b70ac74dde7fa9878f65ff74faeb7a4d",
-          "bd5f3f8fde5b27980e529a43d268bb3add55d98ed8f45ca91f708611cb5419fd"
+          "e8ef4d79039082378a314f6227756877a81a8f96cd380f14755eff9b6487251b",
+          "7e8de88647cd841d96b511442304b71afea3b074d824ce2e93ca3d83e9240298",
+          "a7daa0317676d59aababb6117cc43ca872e3cda843e99109e5b786e3f3b15652"
         ],
         "invoice_ids": [
-          "bill-6b2029e279bac0cea5f20071dc45b16e",
-          "bill-7c398ec5a0870ef7314499c2473c6e62",
-          "bill-cc22e39f30683e967dca8bd81af94ba8"
+          "bill-09982b6ec4eb28c73a14f6df10e22d0f4d6617a371ff5dc46b96374fff098fa7",
+          "bill-4b0ce8782f233dd6bd2752ba6907371fb7e4c0e89cd23815e9aabdcefecd44e8",
+          "bill-53582595bb3c3bb7234439a7739561e37a3f50bc1d3b2e7fe12cee7851f2f0e9"
         ],
         "positions": [
           {
-            "account_id": "a-69f4ea8cc2d5.ach-v4-demo-650fb521.testnet",
+            "account_id": "a-efcd427eda5b.ach-v4r2-demo-e53eefae.testnet",
             "net": "20000"
           },
           {
-            "account_id": "r-69f4ea8cc2d5.ach-v4-demo-650fb521.testnet",
+            "account_id": "r-efcd427eda5b.ach-v4r2-demo-e53eefae.testnet",
             "net": "-20000"
           },
           {
-            "account_id": "v-69f4ea8cc2d5.ach-v4-demo-650fb521.testnet",
+            "account_id": "v-efcd427eda5b.ach-v4r2-demo-e53eefae.testnet",
             "net": "0"
           }
         ],
@@ -85,77 +85,77 @@
         "worker_hash": ""
       },
       "net_settlement_volume": "20000",
-      "proposer": "desk.ach-v4-demo-650fb521.testnet",
-      "ready_at_ms": 1794335773658,
+      "proposer": "r-efcd427eda5b.ach-v4r2-demo-e53eefae.testnet",
+      "ready_at_ms": 1794481622775,
       "reason": null,
-      "sequence": 0,
-      "settled_at_ms": 1794335777207,
+      "sequence": 2,
+      "settled_at_ms": 1794481663384,
       "status": "SETTLED"
     },
     "withdrawal": {
       "withdrawal": {
-        "account_id": "a-69f4ea8cc2d5.ach-v4-demo-650fb521.testnet",
-        "activity_sequence": 6,
+        "account_id": "a-efcd427eda5b.ach-v4r2-demo-e53eefae.testnet",
+        "activity_sequence": 5,
         "amount": "20000",
-        "completed_at_ms": 1794335783136,
-        "id": "withdraw-0aa1f7aa5cf5e78e4de840ee74e24cb7",
-        "receiver_id": "a-69f4ea8cc2d5.ach-v4-demo-650fb521.testnet",
-        "requested_at_ms": 1794335782091,
+        "completed_at_ms": 1794481670840,
+        "id": "withdraw-18ce9010fcc91d99d3436869a7d411df",
+        "receiver_id": "a-efcd427eda5b.ach-v4r2-demo-e53eefae.testnet",
+        "requested_at_ms": 1794481669706,
         "sequence": 0,
         "status": "COMPLETED"
       },
-      "tx_hash": "GbR5dGTnB1yWYV42XpTXQpdQD4M4gJYRshw2Z1AT7JuN",
+      "tx_hash": "AHG9vvNToS71XNa7iB7jSMMjw6UjKxx9BCuM3AwMw8gP",
       "evidence": "near_final"
     },
     "one_way_round": {
       "approvals": [
         {
-          "account_id": "r-69f4ea8cc2d5.ach-v4-demo-650fb521.testnet",
-          "activity_sequence": 9,
-          "approved_at_ms": 1794335827110,
+          "account_id": "r-efcd427eda5b.ach-v4r2-demo-e53eefae.testnet",
+          "activity_sequence": 7,
+          "approved_at_ms": 1794481681844,
           "authority": {
             "budget_charge": "0",
             "epoch": 1,
-            "key": "05cda65df792c72e8e358d2d04ff90aa55a84fbb4c3c91d91736fb03975eba35",
+            "key": "039bca50ccdc97b69f162dd44e8e0e44b0211f0a37a90b3245f007d85e4925ca",
             "owner": false
           },
           "expected_net": "-100000",
           "required": "100000"
         },
         {
-          "account_id": "v-69f4ea8cc2d5.ach-v4-demo-650fb521.testnet",
-          "activity_sequence": 8,
-          "approved_at_ms": 1794335831393,
+          "account_id": "v-efcd427eda5b.ach-v4r2-demo-e53eefae.testnet",
+          "activity_sequence": 6,
+          "approved_at_ms": 1794481686569,
           "authority": {
             "budget_charge": "0",
             "epoch": 1,
-            "key": "70e20b66bab12403d311e70a929d7b88c1a23c40e8071bb44ac45f3cf7154deb",
+            "key": "a769ec825f56ae6aa18ff4c46fce7cd0457f352decd59708bbdeff4e8191ffac",
             "owner": false
           },
           "expected_net": "100000",
           "required": "0"
         }
       ],
-      "created_at_ms": 1794335823183,
+      "created_at_ms": 1794481681844,
       "gross_invoice_volume": "100000",
-      "hash": "ce9435886f9068c221e92e20193db7063345a9ed73c1f37b9d38bfa637a80db5",
+      "hash": "26945a79fda5ae14888ee992f14d9e5e231db667782da75d160579a1d21ce99e",
       "input": {
-        "deadline_ms": 1794336121530,
-        "id": "round-5df0aed9c137b364efed154cd0ce3589",
-        "input_commitment": "",
+        "deadline_ms": 1794482576407,
+        "id": "pg-be5a3222915fa7067635386a77783765-19bd57399ce1475090cfe940cb6115bf",
+        "input_commitment": "4a5abf80c9ced164f82e8710ac6cecac5170c226b7b2fbe0912a5dbf8ae9cce3",
         "invoice_hashes": [
-          "d9137e8868ac027c44fe550551334af9edb263cd702800cacc9abeb31ce292be"
+          "7b3b89d44db3ec127137264e37f862bbacf1e1199e8c9681cd91e5d8f66f9384"
         ],
         "invoice_ids": [
-          "bill-99516e7624087341eb9068e082cae031"
+          "bill-ced585a92b91e8567a5f68c0df4665143e2114cad674c759b0616de0c56550f7"
         ],
         "positions": [
           {
-            "account_id": "r-69f4ea8cc2d5.ach-v4-demo-650fb521.testnet",
+            "account_id": "r-efcd427eda5b.ach-v4r2-demo-e53eefae.testnet",
             "net": "-100000"
           },
           {
-            "account_id": "v-69f4ea8cc2d5.ach-v4-demo-650fb521.testnet",
+            "account_id": "v-efcd427eda5b.ach-v4r2-demo-e53eefae.testnet",
             "net": "100000"
           }
         ],
@@ -163,104 +163,104 @@
         "worker_hash": ""
       },
       "net_settlement_volume": "100000",
-      "proposer": "desk.ach-v4-demo-650fb521.testnet",
-      "ready_at_ms": 1794335831393,
+      "proposer": "r-efcd427eda5b.ach-v4r2-demo-e53eefae.testnet",
+      "ready_at_ms": 1794481695364,
       "reason": null,
-      "sequence": 1,
-      "settled_at_ms": 1794335835623,
+      "sequence": 3,
+      "settled_at_ms": 1794481931265,
       "status": "SETTLED"
     },
     "backing": {
       "actual_token_custody": "980000",
       "total_balances": "980000",
       "pending_withdrawals": "0",
-      "code_hash": "BqVoRKp6s86q1K6VEBj9KCnbVktYEGjMrA72utYVAyko"
+      "code_hash": "3Mh1JPqCL6kVvT8qZLmU6eexd3CyzMDAqGBatjUdLQCJ"
     }
   },
-  "code_hash": "BqVoRKp6s86q1K6VEBj9KCnbVktYEGjMrA72utYVAyko",
+  "code_hash": "3Mh1JPqCL6kVvT8qZLmU6eexd3CyzMDAqGBatjUdLQCJ",
   "private_flow": {
-    "session_id": "7a6844413a7ff539d7eec7d405d557eb",
+    "session_id": "e263a2d857e3abdb90a61a8eedaee942",
     "private_ingress_signed": true,
     "plaintext_private_input_in_snapshot": false,
     "padded_ciphertext_bytes": 2064,
     "receipt_checks": [
       {
-        "tx_hash": "7MCWRaLb7mB6QaqGqffotb9gwJLyHR2jgKJK67a5dsnW",
+        "tx_hash": "84xs4VDfqJADdCpbJSUkcKVnwDsCzMsyBDSBEhWh1j4f",
         "request_ids": [
-          "16852"
+          "30696"
         ],
         "worker_hash": "d88bf904db9899a5a9ea56bea1ba7e417a26058a53fca00210e5f20e1384e26a",
         "operation": "verify",
-        "input_commitment": "2ce38c8b7c44c2b26a473ba13ac3c987eccf8ec70acddba1cd1338ebe121a482",
+        "input_commitment": "48882fbb33d4a756906bd971da9d91ca0c594fd7b2aed9ec6685deeb773022fd",
         "positions": [
           {
-            "account_id": "r-7a6844413a7f.ach-v4-demo-650fb521.testnet",
+            "account_id": "r-e263a2d857e3.ach-v4r2-demo-e53eefae.testnet",
             "net": "0"
           },
           {
-            "account_id": "v-7a6844413a7f.ach-v4-demo-650fb521.testnet",
+            "account_id": "v-e263a2d857e3.ach-v4r2-demo-e53eefae.testnet",
             "net": "0"
           }
         ]
       },
       {
-        "tx_hash": "Gt4ZKwTsD87YjZv8CYhsqXuj4x8SqDcQyNsdZhLbbGK9",
+        "tx_hash": "HhD18aT7zeMzBxcDmsfF53yoCsqZvKX31sTDu99hRDg6",
         "request_ids": [
-          "16850"
+          "30682"
         ],
         "worker_hash": "d88bf904db9899a5a9ea56bea1ba7e417a26058a53fca00210e5f20e1384e26a",
         "operation": "verify",
-        "input_commitment": "a68c6699dd7f61a5b36bcd510e00e054fbd82a1b332171ba598dcfd4107b6c0d",
+        "input_commitment": "12012a7335c9090f9f2597098a3b6a88daf5ab1e8bff6160658013e0c8cc8a03",
         "positions": [
           {
-            "account_id": "a-7a6844413a7f.ach-v4-demo-650fb521.testnet",
+            "account_id": "a-e263a2d857e3.ach-v4r2-demo-e53eefae.testnet",
             "net": "0"
           },
           {
-            "account_id": "v-7a6844413a7f.ach-v4-demo-650fb521.testnet",
+            "account_id": "v-e263a2d857e3.ach-v4r2-demo-e53eefae.testnet",
             "net": "0"
           }
         ]
       },
       {
-        "tx_hash": "qKJUmaUpX88fsjbvWUVp151zMaEhPvgBm89kP9FRTRJ",
+        "tx_hash": "FAdC2jAK21a4wA5n61gxpnwJRVF3Sy1nGGG7ECGzePUC",
         "request_ids": [
-          "16848"
+          "30667"
         ],
         "worker_hash": "d88bf904db9899a5a9ea56bea1ba7e417a26058a53fca00210e5f20e1384e26a",
         "operation": "verify",
-        "input_commitment": "b27ce99abe34d26012e30ae7a0aaf212bef50e7a72edcdf5bf22ae522f42e2de",
+        "input_commitment": "f9a801f8fd215a13608e756f0ba83e9a31ffb890436a6ce4e2c506e4f72d641d",
         "positions": [
           {
-            "account_id": "a-7a6844413a7f.ach-v4-demo-650fb521.testnet",
+            "account_id": "a-e263a2d857e3.ach-v4r2-demo-e53eefae.testnet",
             "net": "0"
           },
           {
-            "account_id": "r-7a6844413a7f.ach-v4-demo-650fb521.testnet",
+            "account_id": "r-e263a2d857e3.ach-v4r2-demo-e53eefae.testnet",
             "net": "0"
           }
         ]
       }
     ],
     "net_execution": {
-      "tx_hash": "DqxAy92qLBMQyREZiB4bwHNU2foqtXSMbo56AJPJJWaK",
+      "tx_hash": "8ZmSWGrewvCVBzXShs6yCBKBPMa2aaFBM6o3PwLMzzrP",
       "request_ids": [
-        "16854"
+        "30707"
       ],
       "worker_hash": "d88bf904db9899a5a9ea56bea1ba7e417a26058a53fca00210e5f20e1384e26a",
       "operation": "net",
-      "input_commitment": "bfc7e7460c112a276f385c7f13fd87eb0f2e35b24fafb577331c33284706053e",
+      "input_commitment": "fe86eed699ddcf50cce5efa99e32b77f85ef1c55603dc8d03e6017006da33623",
       "positions": [
         {
-          "account_id": "a-7a6844413a7f.ach-v4-demo-650fb521.testnet",
+          "account_id": "a-e263a2d857e3.ach-v4r2-demo-e53eefae.testnet",
           "net": "20000"
         },
         {
-          "account_id": "r-7a6844413a7f.ach-v4-demo-650fb521.testnet",
+          "account_id": "r-e263a2d857e3.ach-v4r2-demo-e53eefae.testnet",
           "net": "-20000"
         },
         {
-          "account_id": "v-7a6844413a7f.ach-v4-demo-650fb521.testnet",
+          "account_id": "v-e263a2d857e3.ach-v4r2-demo-e53eefae.testnet",
           "net": "0"
         }
       ]
@@ -268,79 +268,79 @@
     "actual_llm": {
       "provider": "NEAR AI Cloud",
       "model": "z-ai/glm-5.3-flash",
-      "response_id": "e987ea4dfbb349259786fc9920d8e521"
+      "response_id": "90a18fcae3e648ecbf38c3c863b7ed99"
     },
-    "private_artifact_sha256": "c881aa86743fec26c4f906b27d8f05fe68678ba8c6e4e7e613bfd993f50b2e58",
+    "private_artifact_sha256": "ed728c150e59630855f8c746de6f588d2197c75ebfced74ff1e7459f572a7679",
     "private_round": {
       "approvals": [
         {
-          "account_id": "a-7a6844413a7f.ach-v4-demo-650fb521.testnet",
+          "account_id": "a-e263a2d857e3.ach-v4r2-demo-e53eefae.testnet",
           "activity_sequence": 4,
-          "approved_at_ms": 1794336009571,
+          "approved_at_ms": 1794482185254,
           "authority": {
             "budget_charge": "0",
             "epoch": 1,
-            "key": "07d1376053344c769315d26e61c2ced2b0d65996cb440d9c5b077456ba2694cb",
+            "key": "1e6210c121f236455a04763ebc86c3fa9de07e9a27a66208a778808b10347fae",
             "owner": false
           },
           "expected_net": "20000",
           "required": "0"
         },
         {
-          "account_id": "r-7a6844413a7f.ach-v4-demo-650fb521.testnet",
+          "account_id": "r-e263a2d857e3.ach-v4r2-demo-e53eefae.testnet",
           "activity_sequence": 5,
-          "approved_at_ms": 1794336012944,
+          "approved_at_ms": 1794482189541,
           "authority": {
             "budget_charge": "0",
             "epoch": 1,
-            "key": "ace302b65d43e364dc93dbbf06e1010cb384f95b7c1b1a54d6983a01955b7641",
+            "key": "77cab419a34cc0a77dc855318852141344d4c9c95556812f3e88d2413ea30b9b",
             "owner": false
           },
           "expected_net": "-20000",
           "required": "20000"
         },
         {
-          "account_id": "v-7a6844413a7f.ach-v4-demo-650fb521.testnet",
+          "account_id": "v-e263a2d857e3.ach-v4r2-demo-e53eefae.testnet",
           "activity_sequence": 4,
-          "approved_at_ms": 1794336017233,
+          "approved_at_ms": 1794482224553,
           "authority": {
             "budget_charge": "0",
             "epoch": 1,
-            "key": "4d6f2a01226c1841c21092dde6c7246a04a1d65411702585f6b1e7381297d42c",
+            "key": "18302e06025f401bb1016cbf9039a824dbacc1692994b5714c6462ed4bf0daba",
             "owner": false
           },
           "expected_net": "0",
           "required": "0"
         }
       ],
-      "created_at_ms": 1794336005632,
+      "created_at_ms": 1794482858674,
       "gross_invoice_volume": null,
-      "hash": "13c4624f921f02815f53b76744868ae1a304bd3a4cf021d10130a60db52ac3bc",
+      "hash": "9b49e431ce8d2ded755c2cc91052321fcd5e816a1e59bff4f178a033049ea9e1",
       "input": {
-        "deadline_ms": 1794336296062,
-        "id": "private-af0a62373af9fc9a858f4ab72919bd4f",
-        "input_commitment": "bfc7e7460c112a276f385c7f13fd87eb0f2e35b24fafb577331c33284706053e",
+        "deadline_ms": 1794483018623,
+        "id": "pg-f49b51a6fa44e671d55924a58b05a3cc-5d2a638ec6d7fc02e14d761af67fa2d9-net-0",
+        "input_commitment": "fe86eed699ddcf50cce5efa99e32b77f85ef1c55603dc8d03e6017006da33623",
         "invoice_hashes": [
-          "377e7ca66797720a767c552e56b48fd2000fa94cc48e97ae7f18bd5594201986",
-          "40087eb935f87d9274d46fff648291aa241d86ab7d50d2aa72ebb9bedfdb112c",
-          "86a21cb481a15bd16cb245e03fd010f87db5ca0213aa4e41375593499fba9cb7"
+          "09849f93c8f06c6610357967e06cbcd3202997d72229ffd3edc8e715a7e27682",
+          "0b74620f77e50307c6fe48e307b528e34e743b7e87fc4ee435feb93635084fea",
+          "74957a238ffd54cdb0d41991c065a035360b7c5ba8156b5b0be5dd7ac4359bcf"
         ],
         "invoice_ids": [
-          "0aad0999e78010d0d7371e1695f363d115c1f39f99d0761cb5cef8ee68df8996",
-          "0cef147c0a355e4d3de75ca0d1839d23941720eeeeee4fc80cbb82144f017dde",
-          "ded3844884935cab6be752a832d664f95d992604a74151d2619622c06b5ae598"
+          "9a26a479c013a71978a203040c550ba1b15c1792a31a74fb9c71492626549759",
+          "b20eb7b82b8a8288b7b158c0a3fa9e97f4da071a734ae1ce0c5d548beb209c0f",
+          "cfef2488d83d7a0840aad5041d2b6e6d42d10c8d3bad8fe9964077f289b68d77"
         ],
         "positions": [
           {
-            "account_id": "a-7a6844413a7f.ach-v4-demo-650fb521.testnet",
+            "account_id": "a-e263a2d857e3.ach-v4r2-demo-e53eefae.testnet",
             "net": "20000"
           },
           {
-            "account_id": "r-7a6844413a7f.ach-v4-demo-650fb521.testnet",
+            "account_id": "r-e263a2d857e3.ach-v4r2-demo-e53eefae.testnet",
             "net": "-20000"
           },
           {
-            "account_id": "v-7a6844413a7f.ach-v4-demo-650fb521.testnet",
+            "account_id": "v-e263a2d857e3.ach-v4r2-demo-e53eefae.testnet",
             "net": "0"
           }
         ],
@@ -348,44 +348,47 @@
         "worker_hash": "d88bf904db9899a5a9ea56bea1ba7e417a26058a53fca00210e5f20e1384e26a"
       },
       "net_settlement_volume": "20000",
-      "proposer": "desk.ach-v4-demo-650fb521.testnet",
-      "ready_at_ms": 1794336017233,
+      "proposer": "r-e263a2d857e3.ach-v4r2-demo-e53eefae.testnet",
+      "ready_at_ms": 1794482858674,
       "reason": null,
-      "sequence": 2,
-      "settled_at_ms": 1794336021453,
+      "sequence": 4,
+      "settled_at_ms": 1794482927980,
       "status": "SETTLED"
     },
     "withdrawal": {
       "withdrawal": {
-        "account_id": "a-7a6844413a7f.ach-v4-demo-650fb521.testnet",
+        "account_id": "a-e263a2d857e3.ach-v4r2-demo-e53eefae.testnet",
         "activity_sequence": 5,
         "amount": "20000",
-        "completed_at_ms": 1794336580046,
-        "id": "withdraw-ffeffdabcd3d946066b8e6bfc80ff3de",
-        "receiver_id": "a-7a6844413a7f.ach-v4-demo-650fb521.testnet",
-        "requested_at_ms": 1794336578908,
+        "completed_at_ms": 1794482991859,
+        "id": "withdraw-576aea3b98b4c3aca0137bac3d6766d3",
+        "receiver_id": "a-e263a2d857e3.ach-v4r2-demo-e53eefae.testnet",
+        "requested_at_ms": 1794482990656,
         "sequence": 1,
         "status": "COMPLETED"
       },
-      "tx_hash": "nSYjm2fUtFDWm2R4kNhFk2BGtgNxNpMP2oApahZNUEu",
+      "tx_hash": "9s1oZA8g8qkzxjwSW3u9icGT6AFLdHriQuhnnpuXqPdu",
       "evidence": "near_final"
     },
     "adversarial": {
       "kind": "explicit-negative-fixtures",
-      "unauthorized_request_tx": "4RWkFZajSK8f47HHZvokiRpvmFwmykN8qqby78NmkfgA",
-      "tampered_request_tx": "2dyhCFUeyfBwZ3uBGvCg9oGrQBnLjjzXuHZUhog5aDbq",
+      "workflow_revision": 2,
+      "funding_group_id": "pg-f49b51a6fa44e671d55924a58b05a3cc-negative-abef870d65c91caa59af07fe278ee5ca",
+      "unauthorized_request_tx": "HnEwQ7gNVtzoVYmRW9SwkK6Cp4DzUz9WutVJ2X6AUVXs",
+      "tampered_request_tx": "DbpcuwPqMzQfkpDbbHZk6eufvw1dqaY3dzUYH9oKxHD1",
       "tampered_state": "INVALID_OUTPUT",
-      "expired_request_tx": "2wYE2quCdSfVwB5fJfhbUw6UXNiry9tXP4wvZ13TjEpg",
+      "expired_request_tx": "J9DW4TdyCGHrarqfjNfAChRrEpgEp5CVti21c7LRTVcp",
       "expired_state": "EXPIRED",
       "pending_purchase_cancelled": true,
+      "funded_group_expired": true,
       "permission_released_once": true,
       "balances_unchanged": true
     },
     "backing": {
-      "actual_token_custody": "2960000",
-      "total_balances": "2960000",
+      "actual_token_custody": "1960000",
+      "total_balances": "1960000",
       "pending_withdrawals": "0",
-      "code_hash": "BqVoRKp6s86q1K6VEBj9KCnbVktYEGjMrA72utYVAyko"
+      "code_hash": "3Mh1JPqCL6kVvT8qZLmU6eexd3CyzMDAqGBatjUdLQCJ"
     }
   }
 }

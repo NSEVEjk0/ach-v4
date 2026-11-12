@@ -2,17 +2,17 @@
   "enabled": true,
   "state": "live-private-round-verified",
   "outlayer_account": "outlayer.testnet",
-  "url": "https://test.fastfs.io/ach-v4-demo-650fb521.testnet/outlayer.testnet/d88bf904db9899a5a9ea56bea1ba7e417a26058a53fca00210e5f20e1384e26a.wasm",
+  "url": "https://test.fastfs.io/ach-v4r2-demo-e53eefae.testnet/outlayer.testnet/d88bf904db9899a5a9ea56bea1ba7e417a26058a53fca00210e5f20e1384e26a.wasm",
   "hash": "d88bf904db9899a5a9ea56bea1ba7e417a26058a53fca00210e5f20e1384e26a",
   "profile": "ach-private-v4",
   "encryption_key": {
     "algorithm": "X25519-HKDF-SHA256-AES-256-GCM",
     "protocol_version": 4,
-    "public_key": "424a8887b5312d4a3344fdb1dc17de52a6790bcd2631ff806235ea82cd0b7d08",
+    "public_key": "c52f729a66efeaa08ad30a9521b30ada8cfd317bfbd22ae902e4511e256aeb08",
     "worker_hash": "d88bf904db9899a5a9ea56bea1ba7e417a26058a53fca00210e5f20e1384e26a"
   },
   "protected_key_plaintext_received": false,
-  "secrets_owner": "ach-vault-v4-650fb521.testnet",
+  "secrets_owner": "ach-vault-v4r2-e53eefae.testnet",
   "access": {
     "Logic": {
       "operator": "And",
@@ -20,7 +20,7 @@
         {
           "Whitelist": {
             "accounts": [
-              "desk.ach-v4-demo-650fb521.testnet"
+              "desk.ach-v4r2-demo-e53eefae.testnet"
             ]
           }
         },
@@ -29,7 +29,7 @@
             "condition": {
               "Whitelist": {
                 "accounts": [
-                  "ach-vault-v4-650fb521.testnet"
+                  "ach-vault-v4r2-e53eefae.testnet"
                 ]
               }
             }
@@ -43,19 +43,19 @@
       ]
     }
   },
-  "upload_tx": "CYgCKT37R7TenQJCCe8F3UwSUx5remx18vKQCGY9JSQd",
-  "secret_storage_tx": "EFLunMEVsgX2S4Tmn1t8Wwf4dX8fP11aFv34DAMhQowt",
-  "key_bootstrap_tx": "8nAdQzfZtvUwg673di1ef1ykAoyeKwpJ6DX7V86TJJSu",
+  "upload_tx": "2BKTiDJP5qAMCKL3qQD2VQAirYGNjcGyfagJD1V4vRsj",
+  "secret_storage_tx": "FtN3SNdQi7D3v3yTepeiYyLMfsdLM38i84ebeFVhc2LA",
+  "key_bootstrap_tx": "GnW5H7UrALjr58gs74kcEZhan56dwDdq1CBvbktr8Qxd",
   "private_round_verified": true,
-  "verified_at": "2026-11-10T18:15:24.404Z",
-  "private_round_verified_at": "2026-11-10T18:57:26.806Z",
+  "verified_at": "2026-11-12T10:54:36.245Z",
+  "private_round_verified_at": "2026-11-12T11:51:26.190Z",
   "verification_evidence": {
-    "round_id": "private-af0a62373af9fc9a858f4ab72919bd4f",
-    "net_execution_tx": "DqxAy92qLBMQyREZiB4bwHNU2foqtXSMbo56AJPJJWaK",
+    "round_id": "pg-f49b51a6fa44e671d55924a58b05a3cc-5d2a638ec6d7fc02e14d761af67fa2d9-net-0",
+    "net_execution_tx": "8ZmSWGrewvCVBzXShs6yCBKBPMa2aaFBM6o3PwLMzzrP",
     "receipt_verification_txs": [
-      "7MCWRaLb7mB6QaqGqffotb9gwJLyHR2jgKJK67a5dsnW",
-      "Gt4ZKwTsD87YjZv8CYhsqXuj4x8SqDcQyNsdZhLbbGK9",
-      "qKJUmaUpX88fsjbvWUVp151zMaEhPvgBm89kP9FRTRJ"
+      "84xs4VDfqJADdCpbJSUkcKVnwDsCzMsyBDSBEhWh1j4f",
+      "HhD18aT7zeMzBxcDmsfF53yoCsqZvKX31sTDu99hRDg6",
+      "FAdC2jAK21a4wA5n61gxpnwJRVF3Sy1nGGG7ECGzePUC"
     ]
   }
 }

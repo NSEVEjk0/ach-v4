@@ -1,23 +1,31 @@
 {
   "protocol_version": 4,
   "public_url": "https://ach-rosy.vercel.app",
-  "vault": "ach-vault-v4-650fb521.testnet",
-  "token": "ach-usdc-v4-650fb521.testnet",
-  "code_hash": "BqVoRKp6s86q1K6VEBj9KCnbVktYEGjMrA72utYVAyko",
+  "vault": "ach-vault-v4r2-e53eefae.testnet",
+  "token": "ach-usdc-v4r2-e53eefae.testnet",
+  "code_hash": "3Mh1JPqCL6kVvT8qZLmU6eexd3CyzMDAqGBatjUdLQCJ",
   "source": {
-    "commit": "84e0037b7d8a767ce2d2c3aaa5c8a8c87c8c9d18",
-    "dirty": true,
-    "fingerprint_sha256": "a33e0dd7d2070b6a67a9cb459ec26a9b18a3bda1049fb4b23ed6df43023d66d2",
-    "file_count": 149,
+    "commit": "b9df8fa59bbfb22013451d1670be7f1ae106e10f",
+    "dirty": false,
+    "fingerprint_sha256": "1a2b76f8cfb00e683b4e6862f6941622f015e2bf3dcbc90ed026dcbf2e61ef96",
+    "file_count": 190,
     "roots": [
       "contracts/ach-v4",
       "contracts/test-usdc",
       "crates",
       "workers/private-netting",
       "packages/core/src",
+      "packages/core/package.json",
+      "packages/core/package-lock.json",
       "packages/client/src",
       "packages/client/package.json",
       "packages/client/package-lock.json",
+      "contracts/clearing/package.json",
+      "contracts/clearing/package-lock.json",
+      "contracts/clearing/scripts",
+      "contracts/clearing/src",
+      "contracts/clearing/test",
+      "contracts/clearing/vitest.config.ts",
       "packages/intents/src",
       "packages/intents/package.json",
       "packages/intents/package-lock.json",
@@ -48,31 +56,38 @@
       "docs/design",
       "docs/v4/workflow-audit.md"
     ],
-    "repository_pushed": false,
-    "captured_at": "2026-11-10T23:54:23.408Z"
+    "repository_pushed": true,
+    "publication": {
+      "verified": true,
+      "repository": "NSEVEjk0/ach-v4",
+      "commit": "b9df8fa59bbfb22013451d1670be7f1ae106e10f",
+      "fingerprint_sha256": "1a2b76f8cfb00e683b4e6862f6941622f015e2bf3dcbc90ed026dcbf2e61ef96",
+      "verified_at": "2026-11-12T20:05:29.818Z"
+    },
+    "captured_at": "2026-11-12T20:05:45.762Z"
   },
   "web": {
     "public_url": "https://ach-rosy.vercel.app",
     "preview": {
-      "id": "dpl_Fpha1shRr1ecKzGz5scTWv2BMg74",
-      "url": "https://ach-nuapqils9-ckay.vercel.app",
-      "created_at": "2026-11-10T23:08:27.651Z"
+      "id": "dpl_PURTGdoGTGk3q66uT9iaq8NQBjf8",
+      "url": "https://ach-8gmwtyyuq-ckay.vercel.app",
+      "created_at": "2026-11-12T19:14:18.431Z"
     },
     "production": {
-      "id": "dpl_prV9ekp9BrLHMuTd7MFMADey6q2m",
-      "url": "https://ach-gmobefr7e-ckay.vercel.app",
-      "created_at": "2026-11-10T23:13:35.709Z"
+      "id": "dpl_85SASdXVGa8RMDrvFHr5tVnuQPeT",
+      "url": "https://ach-8unr326fg-ckay.vercel.app",
+      "created_at": "2026-11-12T19:24:20.773Z"
     },
-    "source_sha256": "f2cebd58f1eda0308933db11ae986c9a1ebf106c8f6c0dc03e3268bb4123cab4",
-    "verified_at": "2026-11-10T23:38:38.840Z"
+    "source_sha256": "0069db98f1ecbabfee29e5ea22860e41cb2be6950c711332f050d91a0c8dc025",
+    "verified_at": "2026-11-12T19:48:19.711Z"
   },
   "browser": [
     {
       "kind": "browser-live-journeys",
       "url": "http://127.0.0.1:4310",
-      "checks": 43,
-      "finished_at": "2026-11-10T22:51:54.741Z",
-      "report_sha256": "8678eca37b59ad9904101a2730df2e1e76d1e4733365e3e29af18b6589b2cb8a",
+      "checks": 64,
+      "finished_at": "2026-11-12T16:11:05.958Z",
+      "report_sha256": "06299a711da042711a6cf6d4a386101177e4621c24b0a91b42950ca9a6322327",
       "evidence_directory": "browser-local",
       "workflow_findings": []
     },
@@ -80,26 +95,26 @@
       "kind": "browser-live-journeys",
       "url": "http://127.0.0.1:4310",
       "checks": 36,
-      "finished_at": "2026-11-10T23:07:35.467Z",
-      "report_sha256": "d12d37787ea1f92f4cb3d74df4c6e2610914513343d95b3c8b07cfb3c3a25664",
+      "finished_at": "2026-11-12T11:12:31.206Z",
+      "report_sha256": "57a6c3cd2020bfa0fc3938f85403e09b4cca4cb5e720fca1923a56b9880e2c1e",
       "evidence_directory": "browser-ui-fixtures",
       "workflow_findings": []
     },
     {
       "kind": "browser-smoke",
-      "url": "https://ach-nuapqils9-ckay.vercel.app",
+      "url": "https://ach-8gmwtyyuq-ckay.vercel.app",
       "checks": 28,
-      "finished_at": "2026-11-10T23:10:15.533Z",
-      "report_sha256": "aa676d4e4116a0ecd1dde2ddee0dbe97fd9da55660ccca020ddb4c5a4107e609",
+      "finished_at": "2026-11-12T19:23:27.546Z",
+      "report_sha256": "8a47b9f2ff54ec040dc2bd0586bc0ba90ac445d0350b904e1ebba37d7825b490",
       "evidence_directory": "web-redesign-release/browser-preview",
       "workflow_findings": []
     },
     {
       "kind": "browser-smoke",
-      "url": "https://ach-gmobefr7e-ckay.vercel.app",
+      "url": "https://ach-8unr326fg-ckay.vercel.app",
       "checks": 28,
-      "finished_at": "2026-11-10T23:15:09.119Z",
-      "report_sha256": "0946cf2f18183eb47ac6c211190b5c5c96831d77facbb651ed3a12b343b8c477",
+      "finished_at": "2026-11-12T19:28:38.036Z",
+      "report_sha256": "87b083208d1206d5855d5bf555610e4169768d79b3fa9b99948dc6c542a272c2",
       "evidence_directory": "web-redesign-release/browser-production",
       "workflow_findings": []
     },
@@ -107,90 +122,831 @@
       "kind": "browser-smoke",
       "url": "https://ach-rosy.vercel.app",
       "checks": 28,
-      "finished_at": "2026-11-10T23:15:03.183Z",
-      "report_sha256": "b044ef3532f8fec64b074d65681b6030485e5b47522ff1f6366017a9428b4baa",
+      "finished_at": "2026-11-12T19:33:04.817Z",
+      "report_sha256": "7587325b097fc19fbfddd43f71fe6473772354384615833dff49de543eedfc31",
       "evidence_directory": "web-redesign-release/browser-public",
       "workflow_findings": []
     },
     {
       "kind": "browser-live-journeys",
       "url": "https://ach-rosy.vercel.app",
-      "checks": 43,
-      "finished_at": "2026-11-10T23:38:38.840Z",
-      "report_sha256": "c559c1a053029f35e62effa1964c52ab8a164ff10956f387b5cada929344bba6",
+      "checks": 52,
+      "finished_at": "2026-11-12T19:48:19.711Z",
+      "report_sha256": "a6ec0260e59d30a95442d2417eff6576f70e1aa5893e2c5e1da860d5f6edd9a9",
       "evidence_directory": "web-redesign-release/browser-public-live",
-      "workflow_findings": [
-        {
-          "id": "W06",
-          "kind": "full-group-proposals-lost-to-separate-rounds",
-          "expected_full_group_net_units": "20000",
-          "actual_net_units": "200000",
-          "settled_rounds": 2,
-          "invoice_count": 3,
-          "financial_effects_verified": true
-        }
-      ]
+      "workflow_findings": []
     }
   ],
   "backing": {
     "kind": "independent-final-backing",
-    "vault": "ach-vault-v4-650fb521.testnet",
-    "token": "ach-usdc-v4-650fb521.testnet",
+    "vault": "ach-vault-v4r2-e53eefae.testnet",
+    "token": "ach-usdc-v4r2-e53eefae.testnet",
     "network": "testnet",
-    "actual_token_custody": "7960000",
-    "total_balances": "7960000",
+    "actual_token_custody": "11960000",
+    "total_balances": "11960000",
     "pending_withdrawals": "0",
-    "code_hash": "BqVoRKp6s86q1K6VEBj9KCnbVktYEGjMrA72utYVAyko",
+    "code_hash": "3Mh1JPqCL6kVvT8qZLmU6eexd3CyzMDAqGBatjUdLQCJ",
     "passed": true,
-    "finished_at": "2026-11-10T23:49:06.753Z",
-    "repository_pushed": false
+    "finished_at": "2026-11-12T19:51:13.216Z",
+    "repository_pushed": true
   },
   "services": {
-    "kind": "service-tests",
-    "command": "npm run test:services",
-    "exit_code": 0,
-    "tests": 15,
-    "passed": 15,
+    "suite": "services",
+    "tests": 53,
+    "passed": 53,
     "failed": 0,
-    "finished_at": "2026-11-10T20:33:28.280369+00:00"
+    "exit_code": 0,
+    "command": [
+      "npm",
+      "run",
+      "test:services"
+    ],
+    "evidence_log": "/root/ach-v4/.local/session-resume-20261112/services-after-private-recovery.log",
+    "evidence_log_sha256": "b139ac05df1f309f03e1a0471804aaef79d7f7aa18948aa8d434730a29b81265",
+    "finished_at": "2026-11-12T13:55:19.992968+00:00"
   },
   "workflow_review": {
-    "kind": "offline-wasm-workflow-review",
-    "recorded_at": "2026-11-10T23:49:05.959877+00:00",
-    "tests_passed": 18,
-    "additional_cases": 12,
-    "commerce_regressions": 6,
+    "kind": "local-security-validation",
+    "verified_at": "2026-11-12T18:24:26.662459+00:00",
+    "repository": "/root/ach-v4",
+    "workflow_revision": 2,
+    "workflow_fixes_implemented": true,
     "live_attacks_executed": false,
-    "financial_fixes_implemented": false,
-    "vault_wasm_sha256": "a101500fc8e5a0c4f482db20b237b5722f74e4f4461da244576cd0cf3e360b14",
-    "source_sha256": {
-      "contracts/ach-v4/src/lib.rs": "f8d0ea8530cb291500dcd66e182edc5a5201445801d8168b476d890467a836ab",
-      "services/coordinator/coordinator.mjs": "494e9de07dc14445ad2a9592abc9363147e08745e04db5633d2c68eb79a2b953",
-      "services/agents/runtime.mjs": "b2cfcae0b458044aa9b8f69a1d78bcc3b43c1ed5d2edd269562c32f33f7c3254",
-      "services/demo/sponsor.mjs": "54bba6e83786da7acc3b58791c2fb2bd14645724e223f1698b6c55938f4cdf71",
-      "tests/v4/workflow-audit.test.mjs": "40a53261d81a77ff7b4551997a22b4d7e6ba40dba1cb892421dbcdc460a5f0f9"
-    },
-    "run_report_sha256": "e40e0d4f65a6fc3643db7c9eb05bc086ec3200c81238f8affa65a9409e3b0d2e",
-    "selective_collection_reproduced": true,
-    "report": "docs/v4/workflow-audit.md",
-    "hosted_observations": [
+    "automated_tests_passed": 256,
+    "suites": [
       {
-        "id": "W06",
-        "kind": "fresh-hosted-workflow-observation",
-        "vault": "ach-vault-v4-650fb521.testnet",
-        "expected_full_group_net_units": "20000",
-        "actual_settled_net_units": "200000",
-        "settled_rounds": 2,
-        "stale_full_group_rounds": 2,
-        "net_positions_unchanged": true,
-        "wallet_setup_ms": 187848,
-        "setup_waiting_events": 5,
-        "observed_sessions": 1,
-        "workflow_fixes_implemented": false,
-        "snapshot_sha256": "b4cd06fd252596eedff989f65f927d2cb91938d1609e73e7f267159f9d09503f",
-        "browser_report_sha256": "c559c1a053029f35e62effa1964c52ab8a164ff10956f387b5cada929344bba6"
+        "suite": "rust-workspace",
+        "passed": 46,
+        "failed": 0,
+        "exit_code": 0,
+        "log": "rust-workspace.log"
+      },
+      {
+        "suite": "services",
+        "passed": 53,
+        "failed": 0,
+        "exit_code": 0,
+        "log": "/root/ach-v4/.local/session-resume-20261112/services-after-private-recovery.log"
+      },
+      {
+        "suite": "actual-wasm",
+        "passed": 4,
+        "failed": 0,
+        "exit_code": 0,
+        "log": "actual-wasm.log"
+      },
+      {
+        "suite": "client",
+        "passed": 24,
+        "failed": 0,
+        "exit_code": 0,
+        "log": "client.log"
+      },
+      {
+        "suite": "intents",
+        "passed": 15,
+        "failed": 0,
+        "exit_code": 0,
+        "log": "intents.log"
+      },
+      {
+        "suite": "security-ui-proxy",
+        "passed": 32,
+        "failed": 0,
+        "exit_code": 0,
+        "log": "/root/ach-v4/.local/completion-20261112/security-browser-checkpoints.log"
+      },
+      {
+        "suite": "core",
+        "passed": 10,
+        "failed": 0,
+        "exit_code": 0,
+        "log": "core.log"
+      },
+      {
+        "suite": "agent-test-file",
+        "passed": 14,
+        "failed": 0,
+        "exit_code": 0,
+        "log": "agent-test-file.log"
+      },
+      {
+        "suite": "legacy",
+        "passed": 58,
+        "failed": 0,
+        "exit_code": 0,
+        "log": "legacy.log"
       }
-    ]
+    ],
+    "source_sha256": {
+      ".gitignore": "525e63ea33af46955842e95deff601aaf35bb2eabd8f352eeb11a083b60b064b",
+      "ACH_V4_BUILD_PLAN.md": "bec844ebb61b401b12ebc8e3797303d097dc424f00c4ec5f524495cbeca04687",
+      "ACH_V4_DESIGN_BRIEF.md": "f8d3829c9fc99eb9cdca2bc702350f44ac8f53094ca1cff0d27c350d8d6d9650",
+      "ACH_V4_REVIEW_CHECKLIST.md": "f88300d047848c6aa1ba80670f7704160a37838bf3dd523a62f871a8dbe5d68b",
+      "Cargo.toml": "15e6ec44771bb89d1174590d663fd94b96ba504eef91da4062fd92642937be84",
+      "README.md": "f98f39dc5a3a1c02ae7cb1597e831d3eae7c13bc9d9d5bae71a2dae9afd7baeb",
+      "agent/package-lock.json": "216a44eda9c52bb8d498358ec1de71c2286142187f0b06736a125a85a6526784",
+      "agent/package.json": "964954fe26b3e3320368552d6695dd000fe107ccfa98492e43bc9071ecc7a1cf",
+      "agent/src/index.js": "86c18429baa811cf9d3bf28a84a853f510026cb5aeb2ad1665b5da5fa6c277c4",
+      "agent/test/clearing.test.js": "29e0c3bc469c262de87d469c003f6ba75fb0195de563ea7c5e659597ab148e2e",
+      "contracts/ach-v4/Cargo.toml": "9ab036a68e48bc3b4f6d723c17409867033df319ee7a0f0f9548261eab7ae164",
+      "contracts/ach-v4/src/lib.rs": "2c67579aff591dc02b666fafdbe197bb021f9f935fda761214ccad1316305a8c",
+      "contracts/ach-v4/src/purchases.rs": "a59c0afcefe527b2b0959b3e5b156e828dde23acb4b6caf609e23d8b16c6432b",
+      "contracts/ach-v4/tests/financial.rs": "956603694e8c8fb333228bffc0de1455487eb1b7fd05b5ebde3ae342eff53dd2",
+      "contracts/ach-v4/tests/workflow.rs": "68a2ceb7b1d305289995fb510f7bab5efa2d733f4c90680340c5bcf0d1b7d86a",
+      "contracts/clearing/package-lock.json": "5064ed7b2f6797ad6eb12f07c5ba2c29a5731c6bba5c012d14b02cb22e531f86",
+      "contracts/clearing/package.json": "2f26145f70cb97226f94065b54815f52be708cfe55549d1668f0374ebcdf1455",
+      "contracts/clearing/scripts/build-test-fixtures.mjs": "5397b6377c21c5dd2005277d1fa12df75e3eb8f52fb3d5b5362ba9905598c600",
+      "contracts/clearing/scripts/dependency-interop.mjs": "473077c36328bbedeaa766ba8b94cee7c00dd61ec93a98b9b35e358bd201ea4a",
+      "contracts/clearing/src/index.ts": "d17f5e19bc2e377fcb188348ded08cca6268a8db691542ebaac6e84437ca12c0",
+      "contracts/clearing/src/netting.ts": "1eb9f111e3f14dcc648bbdc7e951cf7a318909d53421ec0d3695a7b959a7be2d",
+      "contracts/clearing/test/clearing.test.ts": "45c639343e3595db42632ef912451ba36c79782a01e3a7eb32ba20f2963fe634",
+      "contracts/clearing/test/dependencies.test.ts": "c82a63a8dd2e65cef27cb387624c35750c754d39679793481d732a5af4c0d6ea",
+      "contracts/clearing/test/fixtures/legacy/index.ts": "5b9c303dd5763308b1edd7c30826dcecd56d3b394d558d33d9abd186fbf99e83",
+      "contracts/clearing/test/fixtures/legacy/netting.ts": "1eb9f111e3f14dcc648bbdc7e951cf7a318909d53421ec0d3695a7b959a7be2d",
+      "contracts/clearing/test/fixtures/legacy/source.json": "00728bd9902c6e3c8f3da1f0599644146f2b97c6b6bfdfeddeb91dc42b540a65",
+      "contracts/clearing/test/fixtures/withdrawal-failure.ts": "527f814da298e9f7767d74f14c6577761c13b15307dba6e189ac1b3ff8902755",
+      "contracts/clearing/test/preflight.mjs": "714c59a12fe9681da367b1c24897dadfc2dc3dd9d3dcf2d7cf9415f50531fdef",
+      "contracts/clearing/test/security.test.ts": "31b1e79298661e595c5262feba16f8943f283f5ce6bec5547ca61b9d5859e542",
+      "contracts/clearing/vitest.config.ts": "92034c9521f963ab82ee621c61ac19d194621225ad000995b3a52e9f48dbf8c4",
+      "contracts/test-usdc/Cargo.toml": "cc836cf902c245cea790dac6c01d1396ae96bcd583cd504c05fc45e4b653b12e",
+      "contracts/test-usdc/src/lib.rs": "f4ed76a291b3086bc688a7451109f552c3607a3c0a2f8a0654d1223734d8cc13",
+      "crates/ach-protocol/Cargo.toml": "3860cf764d803c6d208d2bc7e754057459c3b9d22deef822bd2cb9e0da68bf21",
+      "crates/ach-protocol/src/lib.rs": "422922241be74f82303d029ed591cedcb745890eaa5e632f269ae0d3e437763a",
+      "crates/ach-runtime/Cargo.toml": "f10850e283a0303fb74f3200522e7a5554b469bce7883d178cb92a12cb5200c1",
+      "crates/ach-runtime/src/lib.rs": "ce4bf822f5f220465e5b0984a8f76f8dd7a918749f20a6cff4c1e92bab1b6ddd",
+      "package-lock.json": "ce6d8b2b6c7ba9644b020ac15a1ad782c8d0bc92667c5f6228cb972b95759d32",
+      "package.json": "a804509a3856a4345595b47790aa28ef66de94ea9c9896b90bd1da7f47d070b5",
+      "packages/client/README.md": "089d1e52eef02106b997acd415d92e50c92fae8c125ebd3e4f21ab8038e8093a",
+      "packages/client/dist/amounts.d.ts": "5fedd47ac71dff0f2fad665a5195fd22cc31e7cec1b902a94672fa471b175c68",
+      "packages/client/dist/amounts.js": "7ee7f7b35b00333855895d0a375855dd4b634e4a87df4149bbb4e2193f54f20d",
+      "packages/client/dist/index.d.ts": "b9716b144f8f1a9109a3747049bebb1262b59fe4477d2c1f2c36bf01d120f809",
+      "packages/client/dist/index.js": "8f3b094ee005b4a13fd1eaf523717d3b421398404914a352cd1f0e747517e4d3",
+      "packages/client/dist/near.d.ts": "d7b35368ae64cd5169150e923984d1d6ace228c769d5338aa4f7fb9c7d4d60a1",
+      "packages/client/dist/near.js": "fc112da17e8eeb187790cda4ffc53bd3cfc9e370f7394b9db8e3a92c34cd6011",
+      "packages/client/dist/reconciliation.d.ts": "ce72447c5b94dcf42ab3c3cbc627c5af61f7d627affd661d5fdacdea63e2e166",
+      "packages/client/dist/reconciliation.js": "487a74be896216dd3834363d2ef584f7460f9dff5da24c50476d7c9ea3c33e83",
+      "packages/client/dist/v4.d.ts": "65398b08ddeb3497b3b3f306bb9e886878c49cac00ae36adbf35f2fbe1ab9283",
+      "packages/client/dist/v4.js": "ebfc498c11cf586a98f8c6399615278fd6afa829ef6dd0fac3981b20acc09032",
+      "packages/client/package-lock.json": "a0c1e385bf7e8937cd909112aff39235cf9733743832fab7035bf939bedee7b1",
+      "packages/client/package.json": "fe1fc8fc56124212c85ad601d79f45fdacd51da7496bfd1cd8fe05b5280919ab",
+      "packages/client/src/amounts.ts": "72105252a321efb5f513617a4d288c3a884a6118042f0b88aa93ef136327f716",
+      "packages/client/src/index.ts": "e212e0eba052f4c942f0ea8982c79d8636601814ed45cf8bf4c2aee0e86af142",
+      "packages/client/src/near.ts": "fc112da17e8eeb187790cda4ffc53bd3cfc9e370f7394b9db8e3a92c34cd6011",
+      "packages/client/src/reconciliation.ts": "9fd3d456e617ab6ce2f2c6573af0ec5ffc76aa0aa805bd9befd4d323f0905c80",
+      "packages/client/src/v4.ts": "f5d069033017378fab9727045911339f5a3fca95f05306930af563be9ff0b2bf",
+      "packages/client/test/amounts.test.js": "bdf4d448a8a8b673c6ca3acfd1081b5f007d9a8b00d38cae15cd212333a1a427",
+      "packages/client/test/client.test.js": "bc63b3631062d1424fb06cf4395f5c7a5e9a472404d622e69c7acd3e43b4f775",
+      "packages/client/test/rpc.test.js": "aa0662e4b7762f4e90b55b354ce358a623edc96a8f1116b08c396885f4e678d4",
+      "packages/client/test/v4.test.js": "2015265be4ad591d98a5d9b4f1dcf3de595c534324dfd556844765407cfe5e16",
+      "packages/client/tsconfig.json": "8200faff418c9426f3cbc3b1020dd5fea84130a3cc39231eb70c9ba23abe4cf1",
+      "packages/core/dist/index.d.ts": "bcf58d893974094deaa15c9ad4020aeaa6e55d8cbe1c999fa5128c378b4c3690",
+      "packages/core/dist/index.js": "bcf58d893974094deaa15c9ad4020aeaa6e55d8cbe1c999fa5128c378b4c3690",
+      "packages/core/dist/netting.d.ts": "0dc7e7361a0967b94c8eb102cedcd5956077762c5564e9703e8eedc3db03a4cc",
+      "packages/core/dist/netting.js": "aae1ec117d4af1653eb66ce4f5dff3ca828c7301db73288d593e13c26fcfadc1",
+      "packages/core/dist/types.d.ts": "1f4ea13884a0d2b6e5dea9dc44602095f4c61c04323455219c34a069e905abff",
+      "packages/core/dist/types.js": "677ca26049f1c63022f6ab6f3341aee572a6a112cdb51f9b2bf573fcda8b238c",
+      "packages/core/package-lock.json": "c9a9c38231d036808860b098e95f5461c7c37386d0243272fcc87dfccca7a6f8",
+      "packages/core/package.json": "a57b8e4731326884c52b14343844cbb93b0f9e39c61a15f6d45d45c6be6e6345",
+      "packages/core/src/index.ts": "bcf58d893974094deaa15c9ad4020aeaa6e55d8cbe1c999fa5128c378b4c3690",
+      "packages/core/src/netting.ts": "b65cbe656b2452d7faff0971aeed1a7a7e434275b71c6618154b2769df779007",
+      "packages/core/src/types.ts": "12f7f25e2c958300cb8cfbea93c85eb394bf92eac79ab7b94590b58536dc7c00",
+      "packages/core/test/netting.test.ts": "1ce82aff6417c027ac04ba292c40c1c74b023c58e5d7368568039cc56f07b4fe",
+      "packages/core/tsconfig.json": "9aa34e97e09120e9285a9ebdaa6cdea06d24203c89feb31dca9966838bdbbc45",
+      "packages/intents/README.md": "80639ff349c7b7e7069716b929fb64260532415eab9a1008da94f61636c3f6f8",
+      "packages/intents/dist/http.d.ts": "c427fafcea4c3c291445ec5302137bc976f7f86bc8c82e2c1c801ccc75cb48b0",
+      "packages/intents/dist/http.js": "c6d1f4be7f50ac2189d17a623598fa0ce4c5a3fe5e28221ed1c3346248ea6529",
+      "packages/intents/dist/index.d.ts": "217e86320e548ed8502eb23c72afd7596d229576be36839e57073dd47fbc0bcd",
+      "packages/intents/dist/index.js": "41a04580c9f86577a16bdd8eb195d2ea88677fdfb8d4ee030911affef09bf531",
+      "packages/intents/dist/owner.d.ts": "bd33c22ed6027381bd474ca712dc6688645489a9f847ea47fe8c08aa83a8258f",
+      "packages/intents/dist/owner.js": "5f94fe9994b28168d069fa117780ecb67c8d84dd21c98dc258271e43476b4a46",
+      "packages/intents/package.json": "87e66fbaecf0dd89a3abe02d1e65f87037f3c745307050145d1f2a15094fe730",
+      "packages/intents/src/http.ts": "3390efd9faf55888425074f31f0494518dde03b7ee93184c67a34b609bd8a07c",
+      "packages/intents/src/index.ts": "beb24f711ac9830e05c272dfbaaad7cf13af24c11bfa05edd16decf63c5475f5",
+      "packages/intents/src/owner.ts": "39e23d301bc86839c5da7a044448ecc1953d80dd8220188f40bb45c04e850e14",
+      "packages/intents/test/intents.test.js": "c909d8d9d563f94626f041265f395f8798183ec0559f9da280ecce9f139226eb",
+      "packages/intents/test/owner.test.js": "785670321f9503b9e63ea9d637dbaef27796ce0b1205185fca39b22898def5a3",
+      "packages/intents/tsconfig.json": "ab58db1a3d4b0d10aca984fc5622bfb197149942af1147742a9435f52bb235c9",
+      "rust-toolchain.toml": "c331084c695503ca9a83eee5eff1f7d9af72df9587baf5a8b0c5efc25dfdac42",
+      "scripts/create-participants.mjs": "4491176ea94f0dd658e889054bd903232c3f9894bc9e8490a5c49e34927e3435",
+      "scripts/create-testnet.mjs": "c404cfd5ae242ac14b26641dd8f890a87a1fd4409016ee2f4c69e10a6608487d",
+      "scripts/deploy-contract.mjs": "b143dfbfe37ad1f9b6fcb5fd88e167f4c4ae251a96935797fa2f193c87502151",
+      "scripts/deploy-update.mjs": "4eb7ed57a97a567d2e7faa1139522613621dd2e0cf52e6e4bac3052b445ad4c8",
+      "scripts/deploy.mjs": "0955c181efb464d68d88ec368d175a2fd7748ba2b3384f17392461c43e4dc8c1",
+      "scripts/deploy.ts": "2d15c770ec962bd4f1fb4079fdb87e0e39c1239ee66a89baa588d5d8875ff3a5",
+      "scripts/do-clear.mjs": "44df9ebfd6a8a3d3be85eb53d91764b7560b594864e6c36dc704d3e29ebe1f71",
+      "scripts/fund-contract.mjs": "a53e98042880784a9fe3e132386005f27b0c675ff61efdee11e2350c40e0d066",
+      "scripts/reset-web.mjs": "cc31eb4e0887d00331890eea3e6ead8ba52c9f4c4f567c3e010e87b5beceea5c",
+      "scripts/screenshot.mjs": "590275643cc1562084774b7234ef1d2dce0c2e0822ce82e1f378c5b542a4d94d",
+      "scripts/setup-agent-key.mjs": "1a3b7837f3e10e113479457f81096ffea86ed249ff931c9e91b4db187102a126",
+      "scripts/smoke.mjs": "f587d2363187541080cb4baeb1320919b6b531b181652536907005924be6d526",
+      "scripts/test-clear.mjs": "98969011318709e5118696227122525a74edbd31be3cf866345fef1aa588d7fb",
+      "scripts/v4/browser-fixtures.mjs": "9a6fba092344a7ad8c5bcbd0cae4ce632ac255cd567b7463193109160b1f0dcb",
+      "scripts/v4/browser-local.mjs": "b5fa2b4b9c54f9149174f0c65960ad4e34aba6dc016dc3539497de72fb2c34ef",
+      "scripts/v4/browser.mjs": "4715ccdfaf5205d68af1617146bf1582c14deca7921b00ec20eb00b951bec6d2",
+      "scripts/v4/build.mjs": "01579b388124dd68aeee6c92ccccbe0140fe47a32ed66bd3a53492b9d7822a2f",
+      "scripts/v4/deploy.mjs": "f00b661b299fea5f1a0d34ca02946fab56b99253b8a6c56e82bbe9d974fcee21",
+      "scripts/v4/finalize.mjs": "6286722e35c95febc66e56de745c6008f814de147fa16c7ff3e17bbca1dcd974",
+      "scripts/v4/gas.mjs": "a47f0300572de858ac0cc7b1477f562ac03d0a951ac23407416cbbd9210348e6",
+      "scripts/v4/live.mjs": "b940d3dae36e6e7018d97d7ce9c3afbd2da46b117e5e98453bdace950a9c055e",
+      "scripts/v4/outlayer.mjs": "4e5e35084086dde27f393161fccae88ff206ef79cb857ac52efec2fb166073f1",
+      "scripts/v4/private-live.mjs": "2b09498ce29b1243d16bfdb99f9ff3a60a9172cd39e30c2a5ca99041ba22ced1",
+      "scripts/v4/private-negative-fixture.mjs": "d07da6d2295ad556d0a86d3a34e71890d945e13e50fd5de0151c181e588bc315",
+      "scripts/v4/private-test.mjs": "c662d289a93ff44743c566e394a49d9fe552aede8598b93f235a1e26129d600f",
+      "scripts/v4/scale-fixture.mjs": "56141ce8ccd5d6bd8467d2fed2d0a5ff28de3970c9583170d30c6057008c1c59",
+      "scripts/v4/services.mjs": "98904780537995f91a46fadb6d32485b99362a7e6a5ac5db2563d139c25e64df",
+      "scripts/v4/source.mjs": "7ab50e56f6347a1f0638c8b75e333776b7496f5bffc9f0a445848472f51ae2fc",
+      "scripts/v4/test-contract.mjs": "af36f392ce2e139a5d59d49288467dd719478743f9d77da938b80b4768e264de",
+      "scripts/v4/web-api.mjs": "7e9a12cfa0bb154f35313209f2da7a44e28922ac2eac6bd4f0bf179dca776e17",
+      "scripts/v4/web.mjs": "036f9eef5a825551cc2c0114aa9ed531f1f280497f8c885e37345e1ba9b43cf4",
+      "scripts/void-web.mjs": "4f1ddf25056cf1ca9b76c25f43ef5648411470a4ab4cf2e1bfe23e102c51ef56",
+      "scripts/watchdog.mjs": "d7c73e3431b58afdcfef9ed194301c0a0ca06a682eda2f19ef45895f267326b3",
+      "services/agents/artifacts.mjs": "50f4f15b8bba117bbc50bd06c6ec5bf5a14664c4ddb94fbd68e3f990f1b4f715",
+      "services/agents/main.mjs": "d6b44bd3919d592976c9c806d195fbab9e8059d60c559d64b5b2475ab12b14ea",
+      "services/agents/planner.mjs": "c497c0965b6a9798d89b7daf63d78c19e287604672dd02a7f408ee2a7f7c79df",
+      "services/agents/privacy.mjs": "e1e77103d6a860572532bde631717f9e76562dd0b2dd109fc9187b75ebb2745b",
+      "services/agents/runtime.mjs": "0bd511e8beffcfc7f6d2f411ccd86281ee4e71729d0497d493d08c7a05bb54c7",
+      "services/coordinator/coordinator.mjs": "db80d3fe79e534508f45503071523020c4f997db5a883085fd15a1aae52618ee",
+      "services/coordinator/intents.mjs": "9cca17b07bf06e7b6a8199efeb3b6acf39a57cb6f4ba2c85500f2fbabcacf260",
+      "services/coordinator/main.mjs": "c32eaa8507322142386aadad8226b193c2a4cba30c2b776ea01d907e87d96bcc",
+      "services/coordinator/selection.mjs": "96b6a0c5b2a7723ce19baa8490e4b7e0c3a6917f31e724399d9a90c11186817a",
+      "services/demo/main.mjs": "73e3cb878eb23bbaafa0d2833dbb5c18d230759c5d895109e397f44545b86f0c",
+      "services/demo/sponsor.mjs": "d5fd0fc88b79f1a7c1d5fba75fe1ffc625ceaf37119debc41994c152f325fe51",
+      "services/gateway.mjs": "3409c2e4eb15556f9a9ae2aa410e369705b8d920433b9ef59c6c6c0cec756f3d",
+      "services/lib/config.mjs": "e1c2589a059edc49857a258871525a2935f89799926b8367af77475445bbc91a",
+      "services/lib/http.mjs": "bbcb85dfc2cfea814cfbdf8edfe5e30d1b10b10a3341b7171ad7d6424369e72a",
+      "services/lib/paths.mjs": "013511f83df3d7ba36d3060546775706ba365dec0cce543fdaa259e203f4efee",
+      "services/lib/process.mjs": "50338f3348ab1ee74d588184d905c746fa26a8504ddbeebe638d0562b59bf90a",
+      "services/lib/release.mjs": "b6c86a2c454e33bcde270090fb2db6ef0273a960eb355254b9328598325c024b",
+      "services/lib/store.mjs": "8c3377e8a8a6f855dade08ff3de4e1a9600142cca1ae5d841d1e65e4b9b22edc",
+      "services/lib/transactions.mjs": "fe093d5e0c762494fbf9a6dd78e0e59f75012bc51b8dbb44c9f4b3402e181c51",
+      "services/lib/workflow.mjs": "411750cbbc26f7b25bb61c05c0acd1a6ed30a0976f0fbe9f26ff1d520920d21c",
+      "services/package.json": "301d7fa35e68449d0f4971af4406877d73af06130a7ba331ca876d331bc65076",
+      "services/supervisor.mjs": "ea988b5331830255b04fa11dc1ce9209b3624367eb1680f8cfc76f11b3ed5cd7",
+      "services/test/commerce.test.mjs": "9d172d3dfc0ba8c53ba52bb571d9dfda2e43db4127a9fab328700576638513c1",
+      "services/test/deployment.test.mjs": "320b3044d8f86a3c6d47fc7e36f52c44c2c99b304e9bff7a10100e21154e1e32",
+      "services/test/evaluation.test.mjs": "09e0548a13d344b9de70dc2ebfe075c554c7d075feb9c26c97eddd958c51e67e",
+      "services/test/fixtures/commerce.mjs": "4e557a7d53d3aed4b120443801c4788a18c02e9af723f825e06e624bd9c8af20",
+      "services/test/intents.test.mjs": "1e4866d51d72d9c01dc76f25d79970c8a58d5443335e54aa49c0a822627584ef",
+      "services/test/planner.test.mjs": "3f5f637d25503fa3a342fce177666ec40b5a01f6894b2f0ef7678ac059a80060",
+      "services/test/private-commerce.test.mjs": "b403f4c586e7a5fb9afa69812d839a3087e4a33888586500cc8e106941c39815",
+      "services/test/snapshot.test.mjs": "ea9a35b3e25ab39490fc0e0f4c3ebbf8b4a5d87fa3aa7545382af3a6cfeda3cf",
+      "services/test/sponsor.test.mjs": "7738abfe228bbb8edd70fa8af9725a77c774b1704692260edbdbb8cc1e0bf875",
+      "services/test/workflow.test.mjs": "7616ec85168335062f476eb45a39a291ee2da1bec23bdf972d72c6462c17115b",
+      "tests/v4/clearing.test.mjs": "6f5a5911b18bfe5b4c7dce78133e1fe8e71beb6a2f8d40120ec9c15340085243",
+      "tests/v4/evaluation-ui.test.mjs": "17ee66c18a6d78d493bba20c482df9fd58cfaa1c252652a17cf325c507f71994",
+      "tests/v4/proxy.test.mjs": "87b84b19594d069d8f3893929dcfa51c7997aa30a3c3410761ba2aa383bd2c82",
+      "tests/v4/security.test.mjs": "373913a62a0ab82c014fb42afe152f4a650e39d53f7b1ddc4d997fb47a49c820",
+      "tests/v4/wasm-chain.mjs": "207cacf4c303b010ff3ecc1ad94b1f00aad56c021d2cac56f6c6b384ecbb19c6",
+      "tests/v4/wasm.test.mjs": "73ad659838fb2f9e79c74ff407b1e566b599eec0ce483e233be36cf28bd37a46",
+      "tests/v4/web-modules.mjs": "305778dfacab5b7de1f838e64bdb5badf37b78a72d1eff1c330704933f1aa4b3",
+      "tests/v4/workflow-audit.test.mjs": "40a53261d81a77ff7b4551997a22b4d7e6ba40dba1cb892421dbcdc460a5f0f9",
+      "web/app/agent/page.tsx": "71d9871237f731e81a907de00af5410ab2f6675f0f6d42a0257f20535b29e357",
+      "web/app/api/agent-demo/route.ts": "e866eb531d4d3f08ef7a171ec93072b13d80d55c63822de77b63a1ae91e82017",
+      "web/app/api/agent/route.ts": "e866eb531d4d3f08ef7a171ec93072b13d80d55c63822de77b63a1ae91e82017",
+      "web/app/api/contract/route.ts": "7db2c3156ad3a91486794c55caebff13efba3cbb12dbe77d4abf387700c6efce",
+      "web/app/api/v4/[...path]/route.ts": "dff11295b00968ae653ecb395cf41d61547839f2e0bffb02d0c3c00085204f2e",
+      "web/app/dashboard/page.tsx": "128ebc7d60acb8e20e8de291732a5aca469172257c44f81c869224d168d01765",
+      "web/app/developers/page.tsx": "74e1e00d6d7f537dd0bd4a0769987e3e6483ce432caaf8e1a158667c773f1cd8",
+      "web/app/explorer/page.tsx": "b4c0395dda8bda0f8199da282ca240dbc8e891da3f04673e3ba86d3db88eb291",
+      "web/app/globals.css": "25acf2b98ef9c2a8520878f11ff11324a1004bd503fe77e5d79979a79733bce2",
+      "web/app/layout.tsx": "4a48e12d731ec0cf874547840cc86fada654614c8bd4b6c34c9eeb515090b5ce",
+      "web/app/loading.tsx": "1f1ef48baccb4a1104054b89154cc925a4ffcb63770010dbcd383d73d23d99a9",
+      "web/app/page.tsx": "9f20047374f7d60c8d80ac4fc87d5435918985f1e626144684844b9b15a7ec05",
+      "web/app/proof/page.tsx": "a370d48ca58ad4343fb58bdfed343f10832980982c7a2833ede001c42b34d4e9",
+      "web/app/workspace/page.tsx": "d62294396331e3c232331f92ba40eb7bd1ccb092f30f9da56fc60a6cf1d22bbd",
+      "web/components/AgentDemo.tsx": "6f38f6aeaea39c1afbfb52e996a48bb50be167b8df007f573222cd17b45babcc",
+      "web/components/AgentLog.tsx": "3a611370c548e2626741c3c21e2d05e6965452bb07c68fa60ca99423cb88c4d8",
+      "web/components/BackButton.tsx": "ce6c4334633103fc76465e6e62af606a9ca11b4933deddc2c73df7ccd8feec1c",
+      "web/components/ClearingPreview.tsx": "e72aadf5129c241a2fe9785558521b88da96ea907faa181626f947ce366a3d36",
+      "web/components/ContractControls.tsx": "6067ba0f58d96c04ad1cd739b2c479ce075bc5d5195a2a1b2e5f8707b1e148c7",
+      "web/components/ExplorerDemo.tsx": "52cb2a6cc13f5265c4bee52d0f6a6a14647cbfa8894f834712b29d5511f0c547",
+      "web/components/ExportCsv.tsx": "275ef14e08678e7804215f420e38c95f2dda6f9f187e04e8ccfabffb2ad92dff",
+      "web/components/HeroNetwork.tsx": "9a863cc5ceaa900f7a7df96a8f2a74902f3c5ef4e53a5b8ccddddbdd430c37ca",
+      "web/components/ManualNetting.tsx": "271d31c22688dac533837ba9ee48d12138857c7776160135d7be460fb009620a",
+      "web/components/Nav.tsx": "81f7e9a3523537afa9590f43ecf54e385a85357b717964319d0735bbda96b85c",
+      "web/components/NetGraph.tsx": "96f383385834b21685f2decd6d0b72e16bc89c9e6048b5dccdcc51a676ac0bf6",
+      "web/components/ObligationsTable.tsx": "bd87d530c6da3dc1f5a0360a34fecd873ddf75afa6aec19c9ba5cb4060579776",
+      "web/components/ParticipantsPanel.tsx": "7b995ca34d03cf10d1102b806b54d6cf63b50a06a15faf5ff9279743bd5e58f8",
+      "web/components/SettlementRounds.tsx": "a2296e08b632c58703428e4315401dacb887f9fb66712c28db271c8ab00d2d0b",
+      "web/components/Workspace.tsx": "1a10dbc37153f6324f3162c6b633f94d33f297b08a381b5fe99f01e289c47e86",
+      "web/components/v4/AgentWorkspace.tsx": "d895dc087806951c5eec28ce28e9143d8a231e73fa1f848e4e8ce57f33ebb2fe",
+      "web/components/v4/ArtifactView.tsx": "50dffc9eca3e35e410d6842e7bf4ea4fbe1cb236987fa2c4d366987f14d56ac1",
+      "web/components/v4/Brand.tsx": "8af8b1606547a398a3bcf066e34e3db061aac2eb7ae7285aad1f21ea6019d219",
+      "web/components/v4/ClearingDesk.tsx": "914c49912ed4f302689b7c25c7d40e968d292d9d5299db7f43a1505082606712",
+      "web/components/v4/ExampleSheet.tsx": "7ed76763f8be0e4c9e9eba3687fb1b5527deefeeff0cc591097c267472403950",
+      "web/components/v4/FundingRoutes.tsx": "c5ae3118835f87867a98dfeccf5dadecd71f64e0229c24d96e55970ee8c2aa8e",
+      "web/components/v4/History.tsx": "f1cb41177a72458461e6b66d4b134e682b10a3559d8c608ea155ba48002d53fc",
+      "web/components/v4/Interface.tsx": "d2bcc9091691449f4f9b9c9223d3351c9c79720782b1e85b6657594e294d0d67",
+      "web/components/v4/PaymentsTable.tsx": "d9f944adacdf4b2400d1cf2188549e47d8c344adceec1e05ed21032869356069",
+      "web/components/v4/Permissions.tsx": "6564e07989256ab7eda6152315d0eb239bd59069da59b2843a0ff0d14668c4bb",
+      "web/components/v4/PublicNav.tsx": "6aa653f781bd6af6b556ee3059d07ad21df36a0ac7ca1403ee627f66596c9075",
+      "web/components/v4/RoundDetails.tsx": "5718dbfd5215657be66cc04b3fb1e2c2339bb8e5218fcd347c51d64ca03c16ce",
+      "web/components/v4/StartSession.tsx": "3fb6250554ec515d47cce5f66f12ebb38b89e61682311f62b6a4f2661eab3ce1",
+      "web/components/v4/WalletControls.tsx": "39160f4865b3067ff90dc46326fc3be0969e01462267e730988684f455642909",
+      "web/components/v4/WorkForm.tsx": "1a583395f0e0ac3100e4a4a9c8a203b5a6a3e7240d2a1858b3172e2167f5161b",
+      "web/components/v4/Workspace.tsx": "6b50012eb068fbfa3f46b1611986482741258097b328d349ff34a48e6e5e98eb",
+      "web/components/v4/useWorkspaceNavigation.ts": "3c9c5d09cf06fb6768d1c4636bb28f4c32e526be4f0536cc81a2225fc863ab4f",
+      "web/lib/ach.ts": "f79031e978b83767d6c00d60fc1791e740b45422b1dfd6062aafda2903b03266",
+      "web/lib/clearing.ts": "2486ff66cd21c86106d4bf7195e6946d27aa92ccd503b512e3d00e9d691aa445",
+      "web/lib/gateway.ts": "927ab93cd35d934fb24396f0c4d1c0f01b979f8530a669d538b8f44326cc1a4e",
+      "web/lib/history.ts": "0e2acf5de4d13f05a75b8f964a67067b366016853935a9da726a018234509f33",
+      "web/lib/privacy.ts": "32667921c86931fb29958f48bdca5912294248f5c2677704d52caf36553a8ba6",
+      "web/lib/request.ts": "612040f3e36865e756aa8977cb871c6c7370330035c59eb47dc58ee579bc4839",
+      "web/lib/v4.ts": "bff01d864d15adc5a378749eab31acd1456a48a4500ad87a8e8c3415fc4ccc13",
+      "web/next-env.d.ts": "85ae5aee75f011967cf2d25cbc342f62d69314e9d925f7f4aa3456fc2cffcca6",
+      "web/next.config.ts": "a914c9fe2b546a224fd71e2e920ae5a9dfafca1e83f311516457afe69295d6cd",
+      "web/package-lock.json": "4ccca4aa069fea961a3967936194b8f909cbeee82330efa7a73f047a378eb446",
+      "web/package.json": "cb6dc5dcc0099ebb484c6929711b90e0b9ffb0dc3578223e14a85b5270b15ff9",
+      "web/postcss.config.mjs": "e32657baf631d7c5f4dc67b4b2ee0ec8e7d5b3c41860e09cddce7c0377cd80bc",
+      "web/tailwind.config.ts": "c71186dd87e250d4285e0274db31b55f32764e490ba03c3f54fe7e2aab0e2f36",
+      "web/tsconfig.json": "3c208b6b765d68c27ab2fd46d9a8fdb7a6509acfff3799eba7d3651c9a552aaa",
+      "workers/private-netting/Cargo.toml": "716231dd231d7e9954e44bc83380a5fa4996dda3dccaff56455b27fc90ad1c45",
+      "workers/private-netting/src/lib.rs": "c19b2536aef0da7371d905d90badbe60aa6d1a98176f3f4543d85a7d59d91e1a",
+      "workers/private-netting/src/main.rs": "531a2531888406ce3b5d235ed393e74f46afd9bc56b26c720d194d2592ab0dec",
+      "services/test/recovery.test.mjs": "066459b31c5ef034b56fae27ae771dbb2c361fb054fcd4caa936a1b5bde9febe",
+      "scripts/v4/browser-state.mjs": "20ac73a497cbd6bbb40eddfd1773a0dea37e7fb222bcb9110df6528845fe312e",
+      "tests/v4/browser-state.test.mjs": "c7afd957d0b16188b5cee1081684f7f6dc198342532fc2d26c358f2d958d7672",
+      "docs/v4/README.md": "613ef46bbfb66aef43e70e27a03dead8e3e2cb72c1eb5cc4524fe90584263f67",
+      "docs/v4/validation-20261112.md": "666ab6b13462ebf9d3b284327388a493de037ba4fdc755851c602d088f106992",
+      "docs/v4/screenshots/manifest.json": "2dfda806440446c6ba1050518a2f82c14a71880cf6356ffd408a96e32502b184",
+      "docs/v4/screenshots/landing-1440.png": "d0ea9ad72e9cced2321cf945c696f3bf06d36e13a5e3b77ebcd3b7820a0e9420",
+      "docs/v4/screenshots/wallets-390.png": "e3a89e154647ca8b53a2473862ea54b4b423b2ee36b2fd8149d43bddfd4b828e"
+    },
+    "artifacts": [
+      {
+        "name": "vault",
+        "path": "target/wasm32-unknown-unknown/release/ach_vault.wasm",
+        "bytes": 1003092,
+        "sha256": "23043959af2ceb9ed557def2f8a24aa27e54ae8949679c0e0727069440bf2ee3"
+      },
+      {
+        "name": "token",
+        "path": "target/wasm32-unknown-unknown/release/ach_test_usdc.wasm",
+        "bytes": 244607,
+        "sha256": "5864be3d2a4a14c743952d0d23f12d77e53a801e23bfdd6f0216b6012f258e31"
+      },
+      {
+        "name": "worker",
+        "path": "target/wasm32-wasip2/release/ach-private-netting.wasm",
+        "bytes": 375649,
+        "sha256": "d88bf904db9899a5a9ea56bea1ba7e417a26058a53fca00210e5f20e1384e26a"
+      },
+      {
+        "name": "client-sdk",
+        "path": "web/public/sdk/ach-client-4.0.0.tgz",
+        "bytes": 20940,
+        "sha256": "8fdf5677d77682168d0ffac1963c6e3aa9e6310489fabc99a97668e7c6bb98b4"
+      },
+      {
+        "name": "intents-sdk",
+        "path": "web/public/sdk/ach-intents-4.0.0.tgz",
+        "bytes": 9698,
+        "sha256": "d7905562e499ee4aef9e95d22bd008bbc38455465a4f4c24146d977634b837f2"
+      }
+    ],
+    "logs": [
+      {
+        "path": "rust-workspace.log",
+        "sha256": "420235586a3b90c6a8d9d0ef4467e4ff5728b23efc856081094bdce881c3e8bf"
+      },
+      {
+        "path": "services.log",
+        "sha256": "5da16800d33ca171f380fe2d10f75f11d0a15dd97ec8a2e76d16db9389c6faa8"
+      },
+      {
+        "path": "actual-wasm.log",
+        "sha256": "038fc24e8591b5d95dee1acd84d5e40538391aab31939d29097c6bef5feef1e3"
+      },
+      {
+        "path": "client.log",
+        "sha256": "36429cdb3d46906ebaadf35e8ee2d3885bd31531b05ed500691ea00e3ef487fd"
+      },
+      {
+        "path": "intents.log",
+        "sha256": "d8c71e33868a1e47e23df3e77b7c46ead6fc2c262deebb426ac3303c2dda5700"
+      },
+      {
+        "path": "security-ui-proxy.log",
+        "sha256": "c766ceb82747a1a702f0ca7d7861abb749615cc612d0df278ca7a6e54aa63963"
+      },
+      {
+        "path": "core.log",
+        "sha256": "8413c87252146cfb22dfd1e25fbc6adcd879cdbb153f0091208a5e097a7b96c7"
+      },
+      {
+        "path": "agent-test-file.log",
+        "sha256": "2bb0dff4fa6284e3e7edd159cc0ced8bbd78c8ce642f0e08ab4ac90ee3e84862"
+      },
+      {
+        "path": "legacy.log",
+        "sha256": "8e713c8a2e06452bb9cb7c28f70436713406f2485f7231a1bf1fc782b41fbeb8"
+      }
+    ],
+    "local_browser_passes": [
+      {
+        "pass": "pass-1",
+        "checks": 66,
+        "report_sha256": "ff0f6d04dea2b4bb5662ee1398754e97d4b45d8e0551c74ba55dbd44a423f967"
+      },
+      {
+        "pass": "pass-2",
+        "checks": 66,
+        "report_sha256": "4485cd7f2b6f0e4710ebbac62edff8f3d9962f5d860bfb2b8015fcad0dc81d25"
+      },
+      {
+        "pass": "committed-recovery",
+        "checks": 66,
+        "report_sha256": "ed3847c096abea49e6b06316ffef70f01d501a90ce0a3a0520ed69837d8c6dc6",
+        "report": "/root/ach-v4/.local/security-review-20261111/browser/report.json",
+        "finished_at": "2026-11-12T14:08:30.089Z"
+      }
+    ],
+    "syntax": {
+      "passed": true,
+      "files_checked": 63
+    },
+    "credential_pattern_scan": {
+      "matches": 0,
+      "files_checked": 125
+    },
+    "diff_whitespace_check": "passed",
+    "dependency_audit": {
+      "packages_scanned": [
+        {
+          "lockfile": "agent.json",
+          "vulnerabilities": {
+            "info": 0,
+            "low": 0,
+            "moderate": 0,
+            "high": 0,
+            "critical": 0,
+            "total": 0
+          }
+        },
+        {
+          "lockfile": "contracts-clearing.json",
+          "vulnerabilities": {
+            "info": 0,
+            "low": 16,
+            "moderate": 0,
+            "high": 0,
+            "critical": 0,
+            "total": 16
+          }
+        },
+        {
+          "lockfile": "packages-client.json",
+          "vulnerabilities": {
+            "info": 0,
+            "low": 0,
+            "moderate": 0,
+            "high": 0,
+            "critical": 0,
+            "total": 0
+          }
+        },
+        {
+          "lockfile": "packages-core.json",
+          "vulnerabilities": {
+            "info": 0,
+            "low": 0,
+            "moderate": 0,
+            "high": 0,
+            "critical": 0,
+            "total": 0
+          }
+        },
+        {
+          "lockfile": "root.json",
+          "vulnerabilities": {
+            "info": 0,
+            "low": 0,
+            "moderate": 0,
+            "high": 0,
+            "critical": 0,
+            "total": 0
+          }
+        },
+        {
+          "lockfile": "web.json",
+          "vulnerabilities": {
+            "info": 0,
+            "low": 0,
+            "moderate": 0,
+            "high": 0,
+            "critical": 0,
+            "total": 0
+          }
+        }
+      ],
+      "all_six_tracked_lockfiles_scanned": true,
+      "current_runtime_high_or_critical": false,
+      "legacy_low_findings_mitigated_by_postinstall_and_regression_tests": 16,
+      "peer_only_package": "packages/intents uses the audited client peer; it has no separate lockfile"
+    },
+    "report": "docs/v4/validation-20261112.md",
+    "limitations": {
+      "mainnet_transfers": "Not exercised",
+      "independent_security_audit": "Not performed"
+    },
+    "followup_validation": {
+      "reason": "Recover committed public and private deliverables after a timeout; retain workspace ownership through RPC outages",
+      "changed_runtime_sources": [
+        "services/coordinator/coordinator.mjs",
+        "services/coordinator/main.mjs",
+        "web/app/api/v4/[...path]/route.ts"
+      ],
+      "new_regressions": [
+        "services/test/recovery.test.mjs",
+        "services/test/private-commerce.test.mjs",
+        "tests/v4/proxy.test.mjs"
+      ],
+      "changed_reviewed_files": [
+        "README.md",
+        "scripts/v4/browser.mjs",
+        "services/coordinator/coordinator.mjs",
+        "services/coordinator/main.mjs",
+        "services/test/private-commerce.test.mjs",
+        "tests/v4/proxy.test.mjs",
+        "web/app/api/v4/[...path]/route.ts",
+        "services/test/recovery.test.mjs"
+      ],
+      "unchanged_reviewed_files": 218,
+      "checks": [
+        {
+          "suite": "services",
+          "tests": 53,
+          "passed": 53,
+          "failed": 0,
+          "exit_code": 0,
+          "command": [
+            "npm",
+            "run",
+            "test:services"
+          ],
+          "evidence_log": "/root/ach-v4/.local/session-resume-20261112/services-after-private-recovery.log",
+          "evidence_log_sha256": "b139ac05df1f309f03e1a0471804aaef79d7f7aa18948aa8d434730a29b81265",
+          "finished_at": "2026-11-12T13:55:19.992968+00:00"
+        },
+        {
+          "suite": "security-ui-proxy",
+          "tests": 24,
+          "passed": 24,
+          "failed": 0,
+          "exit_code": 0,
+          "command": [
+            "npm",
+            "run",
+            "test:security"
+          ],
+          "evidence_log": "/root/ach-v4/.local/session-resume-20261112/security-after-session-recovery.log",
+          "evidence_log_sha256": "9360f3efdf68d00b8d28fea6c310cfbe4c1e171bde2065a6ece9925b41c4f40b",
+          "finished_at": "2026-11-12T13:30:58.045083+00:00"
+        },
+        {
+          "suite": "production-web-build",
+          "exit_code": 0,
+          "command": [
+            "npm",
+            "run",
+            "build",
+            "--prefix",
+            "web"
+          ],
+          "evidence_log": "/root/ach-v4/.local/session-resume-20261112/web-build-after-session-recovery.log",
+          "evidence_log_sha256": "ded91e729aa89e8298a208e5f1f309c8a988ca31ef230f2e19b23118bb4fb722",
+          "finished_at": "2026-11-12T13:31:28.768040+00:00"
+        },
+        {
+          "suite": "fully-local-browser-and-wasm",
+          "exit_code": 0,
+          "pass": "committed-recovery",
+          "checks": 66,
+          "report_sha256": "ed3847c096abea49e6b06316ffef70f01d501a90ce0a3a0520ed69837d8c6dc6",
+          "report": "/root/ach-v4/.local/security-review-20261111/browser/report.json",
+          "finished_at": "2026-11-12T14:08:30.089Z"
+        }
+      ],
+      "prior_review": "/root/ach-v4/.local/session-resume-20261112/verification-before-committed-recovery.json"
+    },
+    "browser_completion_followup": {
+      "recorded_at": "2026-11-12T15:00:15.824273+00:00",
+      "changed_scripts": [
+        "scripts/v4/browser.mjs",
+        "scripts/v4/gas.mjs",
+        "scripts/v4/live.mjs",
+        "scripts/v4/outlayer.mjs",
+        "scripts/v4/services.mjs",
+        "scripts/v4/web.mjs"
+      ],
+      "reason": "Wait within the service deadline, retry enabled manual clearing controls, and report actual pushed-source state",
+      "browser_evidence_pending": false,
+      "runtime_sources_changed": false,
+      "prior_review": "/root/ach-v4/.local/session-audit-20261112/verification-before-browser-completion.json"
+    },
+    "quote_preview_publication": {
+      "recorded_at": "2026-11-12T15:49:12.115835+00:00",
+      "changed_source_files": [
+        "scripts/v4/browser.mjs",
+        "scripts/v4/web-api.mjs",
+        "scripts/v4/web.mjs",
+        "tests/v4/proxy.test.mjs",
+        "web/app/api/v4/[...path]/route.ts"
+      ],
+      "reason": "Publish verified dry quote availability through web runtime configuration without changing the testnet settlement network or claiming mainnet transfers",
+      "tests_passed": 26,
+      "command": [
+        "npm",
+        "run",
+        "test:security"
+      ],
+      "log": "/root/ach-v4/.local/session-finish-20261112/security-final.log",
+      "log_sha256": "4de502d0138148695e430a9619f3027f07d6a42d0ec485ac9bb225ef84fd1f01",
+      "mainnet_transfers_exercised": false,
+      "prior_review": "/root/ach-v4/.local/session-finish-20261112/verification-before-quote-preservation.json"
+    },
+    "browser_history_continuation": {
+      "recorded_at": "2026-11-12T16:07:40.900760+00:00",
+      "changed_source_files": [
+        "scripts/v4/browser.mjs",
+        "scripts/v4/web-api.mjs"
+      ],
+      "reason": "Select the private work row instead of the CSV export and continue completed judge workspaces with their original settled rounds",
+      "earlier_failed_report_preserved": true,
+      "repeated_purchases_required": false,
+      "source_syntax_passed": true,
+      "browser_acceptance_pending": false,
+      "build_log": "/root/ach-v4/.local/session-finish-20261112/web-build-final.log",
+      "build_log_sha256": "9614f7368d1b9bb84eaa0157d88bf959ffe4abc05ef5c957045938a13a9a83e2",
+      "build_exit_code": 0,
+      "prior_review": "/root/ach-v4/.local/session-finish-20261112/verification-before-history-continuation.json",
+      "accepted_report": "/root/ach-v4/.local/v4r2-release-20261111/browser-history-integrity-20261112/report.json",
+      "accepted_report_sha256": "06299a711da042711a6cf6d4a386101177e4621c24b0a91b42950ca9a6322327",
+      "checks": 64,
+      "prior_completed_checks": 32,
+      "runner_source_sha256": "59e8d8021d2adb32fb7a42b016090d12e003772a0020772a532c362d4fe268f9"
+    },
+    "browser_checkpoint_validation": {
+      "changed_reviewed_sources": [
+        "ACH_V4_DESIGN_BRIEF.md",
+        "README.md",
+        "package.json",
+        "packages/client/README.md",
+        "scripts/v4/browser.mjs",
+        "scripts/v4/finalize.mjs",
+        "web/app/developers/page.tsx",
+        "scripts/v4/browser-state.mjs",
+        "tests/v4/browser-state.test.mjs"
+      ],
+      "prior_review": "/root/ach-v4/.local/completion-20261112/verification-before-checkpoints.json",
+      "runtime_service_sources_changed": false,
+      "security_suite": {
+        "passed": 32,
+        "failed": 0,
+        "exit_code": 0,
+        "command": "npm run test:security",
+        "log": "/root/ach-v4/.local/completion-20261112/security-browser-checkpoints.log",
+        "log_sha256": "d6012b9e9b7757e45c2911b0bb82f76b5b79f2a284beee3754fa879435a9bf26"
+      },
+      "isolated_sdk_evidence": "/tmp/ach-sdk-install-SkSqd0/verification.json",
+      "sdk_verification": {
+        "kind": "isolated-sdk-install",
+        "passed": true,
+        "node": "v22.23.3",
+        "exports": [
+          "AchV4Client",
+          "V4NearTransport",
+          "V4RpcProvider",
+          "OwnerIntentsRouter",
+          "NearTokenRouteSender",
+          "destinationReceiptVerifier",
+          "v4PurchaseGroupId",
+          "v4FundedInvoiceId",
+          "v4FundingGroupHash"
+        ],
+        "methods": [
+          "authorizePurchaseGroup",
+          "reconcile",
+          "reconcileExactQuote"
+        ],
+        "resolved_modules": {
+          "client": "file:///tmp/ach-sdk-install-SkSqd0/node_modules/@ach/client/dist/v4.js",
+          "intents": "file:///tmp/ach-sdk-install-SkSqd0/node_modules/@ach/intents/dist/owner.js"
+        },
+        "install_exit_code": 0,
+        "import_exit_code": 0,
+        "verification_script_sha256": "3844d644ef742dcc223afa1ac52e927cbf38508581a9ae5ec0dfb1e3f35a7921"
+      },
+      "web_build_log": "/root/ach-v4/.local/completion-20261112/web-build-guide.log",
+      "web_build_log_sha256": "15b57f605ad871d7f70d6e047bf749c76c17baf7e6377cdbf1a62f44c17e0611",
+      "web_build_exit_code": 0,
+      "description": "Atomic browser checkpoints and sanitized read recovery; independent-agent registration guide and refreshed SDK documentation; exact package hashes verified during finalization"
+    },
+    "release_record_guards": "New preparations clear prior smoke timestamps; finalization requires a current revoked bypass and verified SDK archive hashes.",
+    "hosted_control_verification": {
+      "report": ".local/v4r2-release-20261111/web-redesign-release/browser-public-live-fresh-20261112/report.json",
+      "report_sha256": "a7388d3f86c9ca130aede56e63546a2e015145e189396f1a1dc1bc451d46249b",
+      "checks": 52,
+      "finished_at": "2026-11-12T18:25:55.514Z",
+      "description": "Complete hosted control-flow acceptance before the documentation refresh; refreshed-deployment acceptance follows separately"
+    },
+    "release_completion": {
+      "verified_at": "2026-11-12T19:55:46.216Z",
+      "prior_verification": ".local/completion-20261112/verification-before-final-docs.json",
+      "changed_recorded_sources": [
+        "ACH_V4_DESIGN_BRIEF.md",
+        "README.md"
+      ],
+      "documentation_files": [
+        "README.md",
+        "ACH_V4_DESIGN_BRIEF.md",
+        "docs/v4/README.md",
+        "docs/v4/validation-20261112.md"
+      ],
+      "new_evidence_files": [
+        "docs/v4/screenshots/manifest.json",
+        "docs/v4/screenshots/landing-1440.png",
+        "docs/v4/screenshots/wallets-390.png"
+      ],
+      "runtime_sources_changed": false,
+      "automated_tests_rerun": false,
+      "automated_tests_retained": 256,
+      "description": "Final documentation and reviewed public screenshots; previously verified implementation and test logs are unchanged.",
+      "hosted_reports": {
+        "browser-preview": {
+          "report": ".local/v4r2-release-20261111/web-redesign-release/browser-preview/report.json",
+          "sha256": "8a47b9f2ff54ec040dc2bd0586bc0ba90ac445d0350b904e1ebba37d7825b490",
+          "checks": 28,
+          "finished_at": "2026-11-12T19:23:27.546Z"
+        },
+        "browser-production": {
+          "report": ".local/v4r2-release-20261111/web-redesign-release/browser-production/report.json",
+          "sha256": "87b083208d1206d5855d5bf555610e4169768d79b3fa9b99948dc6c542a272c2",
+          "checks": 28,
+          "finished_at": "2026-11-12T19:28:38.036Z"
+        },
+        "browser-public": {
+          "report": ".local/v4r2-release-20261111/web-redesign-release/browser-public/report.json",
+          "sha256": "7587325b097fc19fbfddd43f71fe6473772354384615833dff49de543eedfc31",
+          "checks": 28,
+          "finished_at": "2026-11-12T19:33:04.817Z"
+        },
+        "browser-public-live": {
+          "report": ".local/v4r2-release-20261111/web-redesign-release/browser-public-live/report.json",
+          "sha256": "a6ec0260e59d30a95442d2417eff6576f70e1aa5893e2c5e1da860d5f6edd9a9",
+          "checks": 52,
+          "finished_at": "2026-11-12T19:48:19.711Z"
+        }
+      },
+      "backing": {
+        "kind": "independent-final-backing",
+        "vault": "ach-vault-v4r2-e53eefae.testnet",
+        "token": "ach-usdc-v4r2-e53eefae.testnet",
+        "network": "testnet",
+        "actual_token_custody": "11960000",
+        "total_balances": "11960000",
+        "pending_withdrawals": "0",
+        "code_hash": "3Mh1JPqCL6kVvT8qZLmU6eexd3CyzMDAqGBatjUdLQCJ",
+        "passed": true,
+        "finished_at": "2026-11-12T19:51:13.216Z",
+        "repository_pushed": true,
+        "report": ".local/v4r2-release-20261111/web-redesign-release/backing-final.json",
+        "report_sha256": "9e4a39db80291c3ac5996e15a5317195e7f5c6f369ed317f97fa72794571ce35"
+      },
+      "bypass_revoked_at": "2026-11-12T19:31:41.407719+00:00",
+      "screenshots": {
+        "kind": "hosted-browser-screenshots",
+        "url": "https://ach-rosy.vercel.app",
+        "vault": "ach-vault-v4r2-e53eefae.testnet",
+        "code_hash": "3Mh1JPqCL6kVvT8qZLmU6eexd3CyzMDAqGBatjUdLQCJ",
+        "web_source_sha256": "0069db98f1ecbabfee29e5ea22860e41cb2be6950c711332f050d91a0c8dc025",
+        "browser_report_sha256": "7587325b097fc19fbfddd43f71fe6473772354384615833dff49de543eedfc31",
+        "captured_during": {
+          "started_at": "2026-11-12T19:32:00.583Z",
+          "finished_at": "2026-11-12T19:33:04.817Z"
+        },
+        "full_page": true,
+        "private_work_included": false,
+        "images": [
+          {
+            "file": "landing-1440.png",
+            "sha256": "d0ea9ad72e9cced2321cf945c696f3bf06d36e13a5e3b77ebcd3b7820a0e9420",
+            "bytes": 621988,
+            "pixel_width": 1440,
+            "pixel_height": 5980
+          },
+          {
+            "file": "wallets-390.png",
+            "sha256": "e3a89e154647ca8b53a2473862ea54b4b423b2ee36b2fd8149d43bddfd4b828e",
+            "bytes": 128162,
+            "pixel_width": 390,
+            "pixel_height": 2488
+          }
+        ]
+      }
+    },
+    "hosted_observations": []
   },
   "limitations": {
     "mainnet_intents_transfers_exercised": false,
@@ -202,5 +958,5 @@
       "timing"
     ]
   },
-  "repository_pushed": false
+  "repository_pushed": true
 }
