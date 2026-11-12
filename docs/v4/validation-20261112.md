@@ -1,21 +1,27 @@
 # ACH verification continuation — 12 November 2026
 
-The resumed run completes the interrupted verification of workflow revision 2. **242 automated tests pass**, and two separate local browser passes each complete **66 checks**. The production web build, exact contract and worker artifacts, private cross-language integration and isolated downloadable SDK installation also pass.
+The resumed run completes the interrupted verification of workflow revision 2. **245 automated tests pass**, and two separate local browser passes each complete **66 checks**. The production web build, exact contract and worker artifacts, private cross-language integration and isolated downloadable SDK installation also pass.
 
 | Suite | Passed |
 | --- | ---: |
 | Rust workspace | 46 |
 | Actual vault/token Wasm | 4 |
-| Services and private commerce | 48 |
+| Services and private commerce | 51 |
 | Client SDK | 24 |
 | Owner Intents SDK | 15 |
 | UI helpers, proxy and security regressions | 23 |
 | Core netting | 10 |
 | Agent behavior | 14 |
 | Legacy integration and dependency protections | 58 |
-| **Total** | **242** |
+| **Total** | **245** |
 
 The browser journeys cover desktop and mobile layouts, exact funded groups, zero available cash after reservation, repeat and identical briefs, independent fresh workspaces, reopening original History and private results, and session isolation. These two passes use actual vault/token Wasm and the native private worker locally; they are separate from hosted testnet acceptance.
+
+## RPC confirmation recovery
+
+The live browser run exposed pending RPC confirmations being counted as service failures, and one unavailable workspace interrupting the coordinator's background pass. Pending RPC, transaction and service responses now resume the same durable request within its existing deadline. Service errors and expired requests retain their bounds, and unavailable workspaces no longer prevent later workspaces from settling or refunding expired reservations.
+
+Three new regressions exercise the actual vault/token Wasm. Repeated lost responses produce one inference, one funded group and three invoices, reserving the same 0.020 tUSDC net debit. Historical failed RPC requests recover without clearing their failure records. A failing earlier workspace cannot block another workspace's settlement or refund. All 51 service tests and all 23 security, UI and proxy checks pass after these changes; unchanged suites retain their verified source and artifact hashes.
 
 ## Live artifact and scale verification
 

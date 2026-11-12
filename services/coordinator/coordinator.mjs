@@ -1,7 +1,9 @@
 import {v4NetPlan,v4Digest,v4ChargeId,v4PurchaseGroupId,V4_MAX_PRIVATE_INVOICES,V4BroadcastUnknown}from '../../packages/client/dist/v4.js';
 import {clearingCandidates}from './selection.mjs';
-const jobError=error=>/^[A-Z_\d]+$/.test(error?.message??'')?error.message:'SERVICE_OR_CHAIN_UNAVAILABLE';
+import {serviceErrorCode}from '../lib/http.mjs';
+const jobError=error=>serviceErrorCode(error,'SERVICE_OR_CHAIN_UNAVAILABLE');
 const retryable=code=>/UNAVAILABLE|UNKNOWN|SYNCHRONIZATION|PRIVATE_PROCESSING/.test(code);
+const confirmationPending=code=>['PRIVATE_PROCESSING','RPC_UNAVAILABLE','TRANSACTION_BROADCAST_UNKNOWN','SERVICE_CONFIRMATION_UNKNOWN','ROUND_SYNCHRONIZATION_UNAVAILABLE'].includes(code);
 export class Coordinator{
  constructor({store,config,getClient,getPrivateClient,agents,sponsor,clock=Date.now,snapshotTtlMs=0,jobTimeoutMs=900000}){Object.assign(this,{store,config,getClient,getPrivateClient,agents,sponsor,clock,snapshotTtlMs,jobTimeoutMs});this.running=new Map();this.lastSync=null;this.snapshots=new Map();this.snapshotTasks=new Map();}
  invalidateSnapshot(id){this.snapshots.delete(id);this.snapshotTasks.delete(id);}
@@ -44,7 +46,7 @@ export class Coordinator{
   // Resume the same bounded operation, including a transient failure saved
   // by an earlier runtime. Its purchase IDs, approvals and quota stay fixed.
   const privateConfirmation=request.privacy==='private'&&this.store.jobs(session.id).some(j=>j.id.startsWith('receipt-')&&j.request&&['STARTED','WAITING'].includes(j.state));
-  if(job.state==='FAILED'&&this.clock()<job.created_at_ms+this.jobTimeoutMs&&((job.error==='AI_PLAN_INVALID'&&(job.attempts??0)<3)||(retryable(job.error)&&((job.failures??0)<3||privateConfirmation)))){job.state='WAITING';delete job.error;this.store.saveJob(job);this.invalidateSnapshot(session.id);}
+  if(job.state==='FAILED'&&this.clock()<job.created_at_ms+this.jobTimeoutMs&&(confirmationPending(job.error)||(job.error==='AI_PLAN_INVALID'&&(job.attempts??0)<3)||(retryable(job.error)&&((job.failures??0)<3||privateConfirmation)))){job.state='WAITING';delete job.error;this.store.saveJob(job);this.invalidateSnapshot(session.id);}
   return job;
  }
  prepareClear(session,request,{automatic=false}={}){
@@ -71,7 +73,7 @@ export class Coordinator{
    try{
     const result=await this.agents.runBrief(session,request);job={...job,state:'COMPLETE',result};this.store.saveJob(job);this.invalidateSnapshot(session.id);
     const latest=this.store.session(session.id)??session;latest.last_job_id=id;this.store.updateSession(latest);if(result.round_id)this.appendRound(latest,result.round_id);this.store.event(session.id,'brief-completed',id,{mode:request.mode,private:request.privacy==='private'});return result;
-   }catch(error){const code=jobError(error),processing=code==='PRIVATE_PROCESSING',failures=(job.failures??0)+(processing?0:1),withinDeadline=this.clock()<job.created_at_ms+this.jobTimeoutMs;job={...job,failures,state:withinDeadline&&retryable(code)&&(processing||failures<3)?'WAITING':'FAILED',error:code,retry_at_ms:this.clock()+10000};this.store.saveJob(job);this.invalidateSnapshot(session.id);throw error;}
+   }catch(error){const code=jobError(error),processing=confirmationPending(code),failures=(job.failures??0)+(processing?0:1),withinDeadline=this.clock()<job.created_at_ms+this.jobTimeoutMs;job={...job,failures,state:withinDeadline&&retryable(code)&&(processing||failures<3)?'WAITING':'FAILED',error:code,retry_at_ms:this.clock()+10000};this.store.saveJob(job);this.invalidateSnapshot(session.id);throw error;}
   })().finally(()=>this.running.delete(id));this.running.set(id,task);return task;
  }
  async privateInvoices(session){
@@ -285,7 +287,9 @@ export class Coordinator{
  }
  recordSettlement(session,result){const round=result.value;this.store.eventOnce(session.id,'round-settled',round.input.id,{tx_hash:result.tx_hash,evidence:result.evidence,net_settlement_volume:round.net_settlement_volume,private:round.input.private});}
  async tick(){
+  let firstError;
   for(const session of this.store.pendingSessions()){
+   try{
    if(session.state&&session.state!=='READY')continue;
    const client=await this.getClient();
    for(const job of this.store.jobs(session.id)){
@@ -331,6 +335,10 @@ export class Coordinator{
    }
    const privateEligible=data.private_invoices.filter(i=>i.status==='ACCEPTED'&&!i.funding_group_id&&!protectedIds.has(i.nullifier)&&this.clock()-i.ready_at_ms>=30000&&i.parties.every(p=>consenting.has(p)));
    if(privateEligible.length&&automatic()){const included=privateEligible.slice(0,V4_MAX_PRIVATE_INVOICES);const request_id=v4Digest(session.id+':private:'+included.map(i=>i.nullifier).sort().join(':')).slice(0,32);await this.clear(session,{request_id,privacy:'private',selected_accounts:[...consenting],invoice_ids:included.map(i=>i.nullifier)},{automatic:true}).catch(()=>{});}
+   }catch(error){firstError??=error;}
   }
+  // One unavailable workspace must not prevent later wallets from settling
+  // committed work or releasing expired reservations. Still report failure.
+  if(firstError)throw firstError;
  }
 }
