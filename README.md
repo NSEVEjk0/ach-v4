@@ -1,126 +1,92 @@
-# ACH v4 — a clearing house for the agent economy
+# ACH v4
 
-[Try ACH for free](https://ach-rosy.vercel.app) · [Developer guide](https://ach-rosy.vercel.app/developers) · [Live deployment](https://ach-rosy.vercel.app/proof)
+**Agent wallets with opt-in clearing.**
 
-The agent economy is coming. Agents will buy research, generate work, check results and sell services to other agents. A single person or business may operate many of them. ACH’s long-term goal is a clearing layer for a network of millions of agents trading across many counterparties.
+[Try ACH](https://ach-rosy.vercel.app) · [Agent SDK](packages/client/README.md) · [Deployment and verification](docs/v4/README.md)
 
-NEAR provides a fast blockchain settlement layer. At large scale, paying every service invoice separately still creates two practical problems:
+The agent economy is coming. [OpenAI is building infrastructure for agent commerce](https://developers.openai.com/commerce/), and [Anthropic is developing agents that use tools and act autonomously](https://www.anthropic.com/research/building-effective-agents). The opportunity extends far beyond a few agents buying services from one another: millions, and eventually billions, of agents could buy compute, exchange data, commission work and sell services across a connected economy.
 
-1. **Capital fragmentation.** Money becomes spread across agents and payment routes. Funding each outgoing bill independently can tie up more money than the group’s final obligations require.
-2. **Payment trust.** Some agents will submit wrong prices, repeat charges, refuse payment or leave a transaction partly completed. Useful commerce needs explicit terms, spending permissions and a dependable settlement process.
+A single person or business can operate many agents. Fast blockchains such as NEAR provide the transaction layer for that economy. As trading grows, two problems become central:
 
-ACH gives agents wallet balances in a shared vault, records accepted service invoices, and lets a consenting group clear its bills together. Each included agent approves the exact invoice set and its final amount. Net debtors reserve confirmed funds. The fully funded round settles all its included balances and invoices in one contract execution.
+1. **Capital fragmentation.** Every agent needs money for its outgoing payments, while money it has earned may still be waiting elsewhere. Across many agents and trades, owners keep funding individual wallets even when much of the group's payments could offset.
+2. **Payment trust.** A malicious agent can change prices, repeat charges, refuse its side of a trade or try to collect money while leaving others unpaid. Agents need payment rules that hold throughout a transaction.
 
-This reduces funding needs where payments offset and protects the final settlement commitment. An accepted invoice remains a receivable until settlement; providers still need a policy for validating and releasing work.
+ACH brings agent wallets and clearing into one system. Owners fund their agents and set spending permissions. Agents agree their purchases, choose a clearing group and authorize exactly what each participant will pay or receive. ACH reserves the required funds and clears the group's payments together, freeing capital for the next round of work.
 
-## What netting does
+## Netting: clear $280 of bills with $20
 
-Netting subtracts what an agent owes from what it is due. Consider the demo’s three service payments:
+Three agents trade with one another:
 
-| Agreed bill | Amount |
+| Agreed payment | Amount |
 | --- | ---: |
-| Research Desk owes Visual Studio for a chart | 0.100 tUSDC |
-| Visual Studio owes Audit Desk for checks | 0.100 tUSDC |
-| Audit Desk owes Research Desk for references | 0.080 tUSDC |
-| Gross invoice value | **0.280 tUSDC** |
+| A owes B for a chart | $100 |
+| B owes C for an audit | $100 |
+| C owes A for research | $80 |
+| **Total bills** | **$280** |
 
-The clearing result is:
+Paying each bill separately moves $100, then $100, then $80. ACH calculates what each agent owes **after subtracting what it is owed**:
 
-| Agent | Is due | Owes | Final movement |
-| --- | ---: | ---: | ---: |
-| Research Desk | 0.080 | 0.100 | Pays **0.020** |
-| Visual Studio | 0.100 | 0.100 | No transfer |
-| Audit Desk | 0.100 | 0.080 | Receives **0.020** |
+| Agent | Money it owes | Money it is owed | Its final position |
+| --- | ---: | ---: | --- |
+| A | $100 | $80 | Pays **$20** |
+| B | $100 | $100 | Pays **$0** |
+| C | $80 | $100 | Receives **$20** |
 
-The group needs 0.020 tUSDC of net funding. The 0.280 tUSDC gross invoice value describes the work purchased. It is not a claim that every payment graph achieves the same reduction.
+**A commits $20. C receives $20. All three bills are cleared.** B's incoming and outgoing payments cancel each other. Each agent ends with the same financial result as paying the original bills separately.
 
-Owners deposit the settlement token into ACH and credit their agents’ wallets. They need enough available cash to cover each agent’s final payment in the selected group. The demo preloads Research Desk with 1.000 tUSDC as a buffer; the full three-bill round above needs only 0.020 from Research. Visual and Audit do not need to deposit cash for that round. A bill cleared alone still requires its full amount.
+That is **92.9% less value moving through payments** in this example. It also reduces the starting cash needed from $100 in a sequential payment chain to $20 for the agreed clearing group. The other $80 can keep working instead of circulating through intermediate payments.
 
-Only the included subgroup must approve. Other agents can continue trading or form another round. Removing a participant changes the calculation: clearing just the Research-to-Visual bill requires 0.100 tUSDC and leaves the other two bills outstanding. Existing approvals cannot authorize a changed invoice set.
+The corrected local demo uses the same pattern at test-token prices: Research Desk owes Visual Studio 0.100 tUSDC, Visual owes Audit Desk 0.100, and Audit owes Research 0.080. Their complete group clears with **0.020 tUSDC** from Research. Visual and Audit supply no settlement cash for that group. These workflow revision-2 corrections remain local; the hosted November 10 release and its [recorded findings](docs/v4/workflow-audit.md) are unchanged.
 
-The public site also contains a labelled illustration with bills of 100, 80 and 60, clearing with 40. Its sample figures are separate from the live testnet service prices.
+Clearing is opt-in. The participating agents choose their group and approve its exact result. Independent groups can trade and clear alongside one another. Before committing a group, agents can leave out a counterparty and calculate a new group with its own funding and approvals.
 
-## The financial precedent: CLS, 2008 and 2020
+## Why this matters: CLS and the financial crises
 
-Foreign exchange already operates at a scale where gross funding would be expensive. [CLSSettlement](https://www.cls-group.com/products/settlement/clssettlement/) combines multilateral netting of funding requirements with payment-versus-payment settlement. The two currency payments settle together. CLS reports funding reductions of over 96%; that figure belongs to CLS and is not an ACH benchmark.
+Netting already supports a major part of the global financial system. [CLSSettlement](https://www.cls-group.com/products/settlement/clssettlement/) uses multilateral netting to reduce foreign-exchange funding requirements by **over 96%**, alongside payment-versus-payment settlement. Banks fund their net obligations while CLS settles the underlying trades.
 
-[CLSNet](https://www.cls-group.com/products/processing/clsnet/) is a separate bilateral netting-calculation service. ACH’s one-token invoice clearing is a different mechanism from settling both currency legs of an FX trade.
+ACH brings that capital-saving principle to agent commerce: agreed payments offset, the remaining amounts are funded, and the group settles together.
 
-In the 2008 crisis, dependence on short-term funding, leverage and uncertain exposures helped turn losses into widespread liquidity stress. The [Federal Reserve’s September 2010 account](https://www.federalreserve.gov/newsevents/testimony/bernanke20100902a.htm) describes those mechanisms. In its [April 2020 resilience account](https://www.cls-group.com/insights/the-fx-ecosystem/covid-19-and-the-importance-of-resilient-financial-market-infrastructures/), CLS describes banks relying on final FX settlement during 2008.
+The crises of **2008** and **2020** showed how quickly demand for liquidity can spread. In 2008, dependence on short-term funding and uncertainty about counterparties intensified the shock. In 2020, the pandemic created sudden pressure for dollar funding. [The Federal Reserve](https://www.federalreserve.gov/newsevents/testimony/bernanke20100902a.htm), [BIS](https://www.bis.org/publ/bisbull01.htm) and [CLS](https://www.cls-group.com/insights/the-fx-ecosystem/covid-19-and-the-importance-of-resilient-financial-market-infrastructures/) describe these stresses and the role of resilient settlement infrastructure.
 
-The pandemic shock of 2020 caused another sharp demand for dollar funding. [BIS Bulletin 1](https://www.bis.org/publ/bisbull01.htm) documents the pressure in FX swap markets. CLS reported March daily payment volumes about 20% above normal without issues or delays. Net funding, settlement controls and operational resilience all contributed to that outcome.
+An economy of continuously trading agents could develop similar pressure: payments waiting on payments, capital scattered across wallets, and many agents seeking liquidity at once. ACH addresses that problem at the payment layer. Netting reduces the cash needed to clear connected trades, and funded commitments give agents a dependable basis for doing business.
 
-A future agent economy could face similar payment pressure if many agents need cash at the same time, hoard balances, or depend on receipts that have not settled. Netting can reduce the cash needed for offsetting obligations. It cannot create the remaining net funding, resolve insolvency, validate every service or guarantee that a crisis will be prevented.
+## From an owner's budget to an agent's next trade
 
-The direction toward agent commerce is supported by the [OpenAI and Stripe Agentic Commerce Protocol](https://github.com/agentic-commerce-protocol/agentic-commerce-protocol). ACH’s proposed market scale is a long-term vision, not a claim about the number of agents trading today or this prototype’s throughput.
+1. **Fund the wallets.** The owner deposits the settlement token into ACH, allocates money to agents and sets their purchase and payment limits.
+2. **Agree the work.** Agents agree the provider, service, price and delivery terms. Purchase IDs and spending rules bind those agreements.
+3. **Commit the clearing group.** Each included agent approves its exact net payment or receipt. Net debtors reserve the required cash.
+4. **Complete the work and payment.** The agreed deliveries and invoices bind the group's settlement. Useful output is released against the complete payment commitment.
+5. **Put the balance back to work.** The group clears together. Agents can trade again, and owners can withdraw available balances.
 
-## Try the workflow
+The free demo prepares three service agents and their wallets. Give Research Desk a brief, follow its purchases from Visual Studio and Audit Desk, inspect the work and expand the clearing round. The round shows every bill, each agent's calculation, its approval and the settlement receipt.
 
-The sponsored demo uses NEAR testnet and a six-decimal test USDC token with no monetary value. Visitors pay no registration, gas, storage, inference or OutLayer charges. Session and usage limits bound the sponsor budget.
+Judges can keep trying briefs; the corrected version removes the two-brief restriction. **Start another test workspace** prepares fresh test wallets. Each workspace stays active for 24 hours; **Settings** lets the same browser reopen earlier active workspaces with their work, payments and receipts. Private results open using the keys retained by the browser that created them. Shared sponsorship budgets and short request intervals protect the demo's operating resources; there is no per-judge two-brief allowance. These changes are included in the local revision-2 work and still require publication to reach the hosted release.
 
-1. Start a free session. Three hosted service agents and their test wallets are prepared for you.
-2. Open **Work**, edit the brief and dataset, and choose the deliverable and invoice visibility. Research Desk uses a model to plan purchases.
-3. Review the delivered chart, reference packet and data checks. The checks validate data format and known source URLs; they do not certify that user-supplied facts are true.
-4. Open **Payments** to inspect the agreed bills. In **Clearing**, select the agents and exact invoices, then review the funding requirement.
-5. Expand a clearing round to see the bound bills, each agent’s incoming and outgoing amounts, approvals and settlement record.
-6. Use **Wallets** to inspect available money, reservations, withdrawals and deposits. **History** provides recorded work, bills and clearing rounds with search, filters and exports.
+**Work**, **Payments**, **Clearing**, **Wallets** and **History** make the complete journey visible. The owner can inspect spending permissions, deposits, withdrawals and available cash from the same workspace.
 
-Standing trading permissions allow the agents to approve eligible rounds automatically. The current coordinator tries clearing after bills have waited roughly 30 seconds, including individual bills when a larger group cannot clear. Selecting a manual round does not permanently pause excluded bills.
+## What ACH provides
 
-## Owner and agent authority
+- **Agent wallets.** Confirmed balances, owner-controlled deposits and withdrawals, and delegated trading keys with spending limits.
+- **Opt-in clearing.** Groups of consenting agents settle agreed payments together, using their final net positions.
+- **Payment commitments.** Exact prices, purchase replay protection, reserved funds and complete-group settlement.
+- **Private processing with OutLayer.** Encrypted invoice contributions are verified and netted by the pinned worker. Participants approve the group's disclosed net movements.
+- **NEAR Intents funding and payouts.** The owner SDK connects cross-chain routes to wallet funding and withdrawals, with quote approval, transaction journaling and destination receipt checks. The app includes live Base ↔ NEAR USDC quote previews.
+- **Independent agent participation.** Agents can bring their own trading signers through the SDK, agree purchases and verify their own clearing positions.
+- **Receipts and History.** Expand rounds to see how clearing happened, follow money actions and export records.
 
-Owners register accounts, deposit tokens, manage permissions and withdraw available funds. Trading keys have counterparty, service, maximum-invoice, gross-purchase-budget, net-commitment and expiry limits. Netting does not bypass the gross purchase allowance.
+The sponsored demo runs on NEAR testnet with tUSDC. Visitors use it free: the sponsor covers registration, gas, storage, inference and OutLayer execution. The test tokens have no monetary value. Private processing protects invoice contents; participants, net movements and timing are visible in settlement. Mainnet route execution uses separately funded owner accounts.
 
-The coordinator proposes and relays rounds. The three service processes retain separate trading signers. Independently operated agents can use the downloadable SDK with their own signers; see [the client guide](packages/client/README.md).
+## Build and run
 
-Invoice acceptance consumes purchase allowance. Cash is reserved when an agent approves its net debit in a clearing round. A READY round has all required approvals and funding; its commitment is irrevocable and anyone can settle it. External withdrawals complete separately and restore the claim if a token transfer fails.
-
-The hosted identities and remaining vault upgrade authority are recorded in [the deployment manifest](docs/v4/deployment.json). This is a hackathon deployment that has not received an independent security audit.
-
-## Private netting with OutLayer
-
-Choose private invoices before sending the brief. The browser encrypts the brief for the service. Providers receive the work they need to perform; their durable private records are encrypted. Private invoice contributions are encrypted for the pinned OutLayer worker.
-
-Receipt verification records the accepted private charges with zero disclosed movements. A private clearing computation requires disclosure consent from every included participant. Agents then authorize the exact resulting settlement round. The public contract does not receive the private invoice contents.
-
-Participant identities, timing, net positions and external transfers remain public. The original browser opens encrypted demo results. Hosted service processes handle plaintext while performing work; this is not a claim that the operator cannot access private inputs. Losing the browser’s decryption key can make its stored results inaccessible.
-
-## Funding and payouts with NEAR Intents
-
-The app obtains real dry mainnet USDC quotes between Base and NEAR. The owner routing SDK validates the quote, journals source transfers and checks destination receipts before marking a route complete. Funding arrives at the owner before a separate ACH deposit; payouts withdraw to the owner before routing.
-
-Mainnet transfers have not been exercised. Execution requires a separately funded mainnet vault and an owner-operated source signer. Each vault clears one settlement token. External routes have separate receipts and recovery states from internal clearing. See [the owner routing guide](packages/intents/README.md).
-
-## Workflow review
-
-The [workflow audit and proposed improvements](docs/v4/workflow-audit.md) document reproduced unpaid-delivery, selective credit collection, purchase-ID blocking, sponsored-storage and history limitations. Its 18 report-only tests describe current behavior. A malicious debtor could collect an incoming payment through a smaller round, withdraw it, and leave its already accepted outgoing bill unpaid. Those audit fixes have **not** been implemented.
-
-The fresh hosted public journey passed 43 financial and interface checks, but automatic clearing split the three demo bills into two rounds moving **0.200 tUSDC instead of 0.020**. Every bill settled once and final balances were correct. That same session took **187,848 ms** to prepare its wallets; this is one observation, not an average. [Release evidence](docs/v4/release.json) preserves these workflow findings alongside the passing checks.
-
-## Repository
-
-| Path | Purpose |
-| --- | --- |
-| `contracts/ach-v4` | Rust vault, invoices, consent, reservations, clearing and withdrawal recovery |
-| `contracts/test-usdc` | Testnet-only settlement token |
-| `crates/ach-protocol` | Canonical encoding, checked integer netting and hashes |
-| `workers/private-netting` | OutLayer receipt verification and netting worker |
-| `packages/client` | Signer-backed financial SDK and transaction reconciliation |
-| `packages/intents` | Quote validation, owner routing and destination receipt checks |
-| `services` | Durable coordinator, sponsor and service agents |
-| `web` | Public site and agent workspace |
-| `tests/v4/workflow-audit.test.mjs` | Report-only adversarial workflow checks |
-| `docs/design/ux-research.md` | Public-source design and financial research |
-| `docs/v4` | Current deployment and verification evidence |
-
-## Build and verify
-
-Use Node 22.22.2 or newer, the pinned Rust toolchain, and the Wasm targets listed in `rust-toolchain.toml`. Browser verification requires Playwright Chromium and its system libraries.
+Use Node 22.22.2 or newer and the Rust toolchain and Wasm targets pinned in `rust-toolchain.toml`.
 
 ```sh
 npm ci
+npm ci --prefix packages/core
 npm ci --prefix packages/client
+npm ci --prefix agent
 npm ci --prefix web
+npm run build --prefix packages/core
 npm run build:v4
 npm run build --prefix web
 cargo test --locked --workspace
@@ -128,9 +94,34 @@ npm run test:wasm
 npm run test:services
 npm test --prefix packages/client
 npm test --prefix packages/intents
-node --test --test-concurrency=1 --experimental-test-isolation=none tests/v4/workflow-audit.test.mjs
+npm run test:security
+npm test --prefix packages/core -- --maxWorkers=1
+npm test --prefix agent
+node scripts/v4/private-test.mjs
+node scripts/v4/browser.mjs --sdk-only
 ```
 
-Live tests require an explicitly selected private deployment namespace. Keys, service credentials, durable stores, browser state and private documents stay outside source. Follow [the release operations notes](docs/v4/README.md); preserve existing balances, keys and state when continuing a deployment.
+The local browser journey runs with `npm run test:e2e -- --local`. It uses generated identities, the actual vault/token Wasm and the native private worker, and requires local listener and Chromium permissions. [Current validation](docs/v4/security-review-20261111.md) records which checks completed in this environment.
 
-The earlier TypeScript contracts and clearing agent remain available for historical inspection. Their commands are archived in [the v2 documentation](docs/legacy/README-v2.md).
+| Directory | Purpose |
+| --- | --- |
+| `contracts/ach-v4` | Wallets, purchases, funding commitments, clearing and withdrawals |
+| `contracts/test-usdc` | The demo's settlement token |
+| `crates/ach-protocol` | Canonical encoding, integer netting and commitment hashes |
+| `workers/private-netting` | OutLayer receipt verification and private netting |
+| `packages/client` | The signer-backed agent SDK |
+| `packages/intents` | Owner funding, payout routes and receipt reconciliation |
+| `services` | Independent service agents, coordinator and sponsorship |
+| `web` | The ACH site and clearing workspace |
+| `tests/v4` | Financial and workflow verification |
+| `docs/v4` | Deployment, release evidence and engineering reports |
+
+The [deployment notes](docs/v4/README.md), [workflow review](docs/v4/workflow-audit.md), [correction record](docs/v4/workflow-fixes.md) and [local security validation](docs/v4/security-review-20261111.md) provide the engineering evidence. Deployment identities and test results are recorded alongside the source. Private keys, service credentials and browser decryption state stay in private deployment stores.
+
+## Verification update — 11 November 2026
+
+**169 automated tests passed**, alongside the production web build, actual contract/worker builds and a fresh installation of both downloadable SDKs. Recent checks cover paid planner retries across restarts, maximum-length 48-order groups, stored wallet identities, isolated service namespaces and publication checks that reject incomplete evidence. Browser journeys, the legacy integration suite, a current dependency advisory result and a corrected live deployment still need verification; the [validation report](docs/v4/security-review-20261111.md) records their exact status.
+
+## Verification update — 12 November 2026
+
+The complete repeated run passes **242 automated tests**, including all 58 legacy tests and 14 agent tests. Two separate local browser runs each pass **66 checks**, covering repeat briefs, fresh workspaces, private results, funding, clearing and History. Both live maximum-size rounds also settle: 12 participants and 48 invoices per round, with the largest measured operation using 119.721 TGas. All six tracked dependency lockfiles were scanned; the legacy toolchain retains 16 low-severity upstream findings with tested local mitigations. The [latest validation and release record](docs/v4/validation-20261112.md) records the current live and publication status.

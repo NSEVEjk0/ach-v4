@@ -1,4 +1,3 @@
-/** Intents operates at the edge of ACH. Quotes never credit the vault. */
 export declare const INTENTS_STATUS: readonly ["KNOWN_DEPOSIT_TX", "PENDING_DEPOSIT", "INCOMPLETE_DEPOSIT", "PROCESSING", "SUCCESS", "REFUNDED", "FAILED"];
 export type IntentsStatus = typeof INTENTS_STATUS[number];
 export type RouteState = "QUOTED" | "WITHDRAWING" | "AWAITING_DEPOSIT" | "RECONCILING_SOURCE" | "INCOMPLETE_DEPOSIT" | "PROCESSING" | "AWAITING_RECEIPT" | "RECEIVED" | "REFUNDED" | "FAILED" | "EXPIRED";
@@ -73,6 +72,7 @@ export interface Route {
     checked_at?: string;
     approval_hash?: string;
     destination_chain?: string;
+    destination_contract?: string;
 }
 export declare function validateQuoteRequest(r: QuoteRequest, now?: number): void;
 export declare function assertQuoteMatches(request: QuoteRequest, response: QuoteResponse): void;

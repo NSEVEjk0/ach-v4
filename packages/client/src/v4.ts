@@ -7,6 +7,7 @@ export type V4RoundState = "COLLECTING" | "READY" | "SETTLED" | "CANCELLED" | "E
 export interface V4Deployment {
   protocol_version: 4; network: "testnet" | "mainnet"; vault: string; token: string;
   decimals: 6; rpc_url: string; rpc_urls?: string[]; code_hash?: string;
+  workflow_revision?: 2;
 }
 export interface V4InvoiceSpec {
   id: string; purchase_id: string; terms_version: number; buyer: string; seller: string;
@@ -19,8 +20,15 @@ export interface V4Invoice {
   status: "PROPOSED" | "ACCEPTED" | "READY" | "SETTLED" | "CANCELLED";
   buyer_acceptance: V4Acceptance | null; seller_acceptance: V4Acceptance | null;
   round_id: string | null; sequence: number;
+  funding_group_id?:string|null;
 }
 export interface V4Position { account_id: string; net: V4Units }
+export interface V4FundingOrder {
+  purchase_id:string; terms_version:number; buyer:string; seller:string; order_commitment:string;
+  public_terms:{amount:V4Units;service:string;terms_hash:string;artifact_hash:string}|null;
+}
+export interface V4FundingGroupInput {id:string;orders:V4FundingOrder[];positions:V4Position[];deadline_ms:number;private:boolean}
+export interface V4FundingGroup {input:V4FundingGroupInput;hash:string;proposer:string;status:"COLLECTING"|"FUNDED"|"READY"|"SETTLED"|"EXPIRED";approvals:V4Approval[];round_id:string|null}
 export interface V4RoundInput {
   id: string; invoice_ids: string[]; invoice_hashes: string[]; positions: V4Position[];
   deadline_ms: number; private: boolean; input_commitment: string; worker_hash: string;
@@ -38,15 +46,15 @@ export interface V4Policy {
 export interface V4Balance {
   account_id: string; name: string; balance: V4Units; reserved: V4Units; available: V4Units;
   pending_withdrawals: V4Units; policy: V4Policy | null; gross_purchase_budget_used: V4Units;
-  active_proposals: number; active_authorizations: number;
+  active_proposals: number; active_authorizations: number; activity_count?:number; sponsored_records?:number;
 }
 export interface V4Withdrawal { id: string; account_id: string; receiver_id: string; amount: V4Units; status: "PENDING" | "COMPLETED" | "RESTORED"; requested_at_ms: number; completed_at_ms: number | null }
 export interface V4PrivateSignature { account_id:string; key_epoch:number; signature:string }
 export interface V4PrivateContribution { spec:V4InvoiceSpec; salt:string; signatures:V4PrivateSignature[] }
-export interface V4PrivatePurchaseAuthorization {charge_id:string;purchase_id:string;terms_version:number;buyer:string;seller:string;order_commitment:string;policy_epoch:number;budget_charge:V4Units;status:"AUTHORIZED"|"FINALIZED"|"CANCELLED";buyer_cancelled?:boolean;seller_cancelled?:boolean}
+export interface V4PrivatePurchaseAuthorization {charge_id:string;purchase_id:string;terms_version:number;buyer:string;seller:string;order_commitment:string;policy_epoch:number;budget_charge:V4Units;status:"AUTHORIZED"|"FINALIZED"|"CANCELLED";buyer_cancelled?:boolean;seller_cancelled?:boolean;expires_at_ms?:number;funding_group_id?:string|null}
 export interface V4EncryptedInvoice { nullifier:string; commitment:string; ephemeral_public_key:string; nonce:string; ciphertext:string }
 export interface V4EncryptionKey { protocol_version:4; worker_hash:string; public_key:string; algorithm:"X25519-HKDF-SHA256-AES-256-GCM" }
-export interface V4PrivateRoundRequest {id:string;profile:string;members:string[];deadline_ms:number;encrypted_invoices:V4EncryptedInvoice[];verification_only?:boolean;disclosure_signatures?:V4PrivateSignature[]}
+export interface V4PrivateRoundRequest {id:string;profile:string;members:string[];deadline_ms:number;encrypted_invoices:V4EncryptedInvoice[];verification_only?:boolean;disclosure_signatures?:V4PrivateSignature[];funding_group_id?:string}
 export interface V4Page<T> { items: T[]; next_cursor: number | null; total: number }
 export interface V4Confirmed<T> { value: T; tx_hash: string; evidence: "near_final" | "local_wasm"; gas_burnt?: string; tokens_burnt?: string }
 export interface V4CallOptions { operation_id: string; deposit?: bigint; gas?: bigint }
@@ -55,10 +63,13 @@ export interface V4Transport {
   codeHash?(contract: string): Promise<string>;
   view<T>(contract: string, method: string, args: Record<string, unknown>): Promise<T>;
   call<T>(contract: string, method: string, args: Record<string, unknown>, options: V4CallOptions): Promise<V4Confirmed<T>>;
+  /** Read an already journaled operation without signing or broadcasting. */
+  reconcile?<T>(contract: string, method: string, args: Record<string, unknown>, options: V4CallOptions): Promise<V4Confirmed<T>>;
 }
 export interface V4Operation {
   id: string; payload_hash: string; signer_id: string; tx_hash: string;
   signed_transaction: string; state: "SIGNED" | "UNKNOWN" | "CONFIRMED" | "FAILED";
+  created_at_ms?:number;amount?:V4Units;
   result?: V4Confirmed<unknown>; error?: string;
 }
 export interface V4Journal { get(id: string): Promise<V4Operation | undefined>; put(operation: V4Operation): Promise<void> }
@@ -95,8 +106,10 @@ export function validateV4Deployment(c: V4Deployment): V4Deployment {
   account(c.vault); account(c.token);
   if (c.vault === "ach-clearing-v2.testnet" || c.vault === "ach-clearing.testnet") throw new Error("LEGACY_VAULT_REFUSED");
   if ((c.network === "testnet") !== c.vault.endsWith(".testnet") || (c.network === "testnet") !== c.token.endsWith(".testnet")) throw new Error("NETWORK_ACCOUNT_MISMATCH");
-  const url = new URL(c.rpc_url); if (url.protocol !== "https:" && !["127.0.0.1", "localhost"].includes(url.hostname)) throw new Error("INVALID_RPC_URL"); return c;
+  if(c.workflow_revision!==undefined&&c.workflow_revision!==2)throw new Error("INVALID_WORKFLOW_REVISION");
+  validateRpcUrl(c.rpc_url); return c;
 }
+function validateRpcUrl(endpoint:string){const url=new URL(endpoint);if(url.username||url.password||!(url.protocol==="https:"||url.protocol==="http:"&&["127.0.0.1","localhost","[::1]"].includes(url.hostname)))throw new Error("INVALID_RPC_URL");}
 export function v4Digest(bytes: Uint8Array | string): string { return createHash("sha256").update(bytes).digest("hex"); }
 export function canonicalV4(purpose: string, network: string, vault: string, fields: string[]): Uint8Array {
   return Buffer.concat(["ACH", "4", purpose, network, vault, ...fields].map(field => {
@@ -112,6 +125,38 @@ export function canonicalV4Invoice(c: V4Deployment, i: V4InvoiceSpec): Uint8Arra
 export function v4InvoiceHash(c: V4Deployment, i: V4InvoiceSpec): string { return v4Digest(canonicalV4Invoice(c, i)); }
 export function v4ChargeId(c: V4Deployment, i: Pick<V4InvoiceSpec, "buyer" | "purchase_id" | "terms_version">): string {
   return v4Digest(canonicalV4("purchase-charge", c.network, c.vault, [i.buyer, i.purchase_id, String(i.terms_version)]));
+}
+export function v4FundedInvoiceId(c:V4Deployment, order:Pick<V4InvoiceSpec,"buyer"|"purchase_id"|"terms_version">):string {
+  return `bill-${v4ChargeId(c,order)}`;
+}
+export function v4PurchaseGroupId(c:V4Deployment, proposer:string, requestId:string):string {
+  account(proposer);id(requestId);
+  const prefix=v4Digest(canonicalV4("purchase-group-proposer",c.network,c.vault,[proposer])).slice(0,32);
+  const result=`pg-${prefix}-${requestId}`;id(result);return result;
+}
+export function v4FundingGroupHash(c:V4Deployment,input:V4FundingGroupInput):string {
+  id(input.id);integer(input.deadline_ms);
+  const limit=input.private?V4_MAX_PRIVATE_INVOICES:48;
+  if(!input.orders.length||input.orders.length>limit)throw new Error("PURCHASE_GROUP_LIMIT");
+  const orders=[...input.orders].sort((a,b)=>{const x=v4ChargeId(c,a),y=v4ChargeId(c,b);return x<y?-1:x>y?1:0;});
+  const members=new Set<string>(),charges=new Set<string>();
+  const fields=[input.id,String(input.deadline_ms),input.private?"private":"public",String(orders.length)];
+  for(const o of orders){
+    id(o.purchase_id);integer(o.terms_version);account(o.buyer);account(o.seller);hash(o.order_commitment);
+    if(!o.terms_version||o.buyer===o.seller||charges.has(v4ChargeId(c,o)))throw new Error("INVALID_PURCHASE_ORDER");
+    charges.add(v4ChargeId(c,o));members.add(o.buyer);members.add(o.seller);
+    fields.push(o.purchase_id,String(o.terms_version),o.buyer,o.seller,o.order_commitment);
+    if(input.private){if(o.public_terms!==null||o.purchase_id.length<32)throw new Error("PRIVATE_ORDER_DISCLOSURE");}
+    else{
+      const t=o.public_terms;if(!t||v4Units(t.amount)===0n)throw new Error("PUBLIC_PURCHASE_TERMS_REQUIRED");
+      id(t.service);hash(t.terms_hash);hash(t.artifact_hash);fields.push(t.amount,t.service,t.terms_hash,t.artifact_hash);
+    }
+  }
+  const ps=[...input.positions].sort((a,b)=>a.account_id<b.account_id?-1:a.account_id>b.account_id?1:0);
+  if(ps.length<2||ps.length>12||new Set(ps.map(p=>p.account_id)).size!==ps.length||JSON.stringify([...members].sort())!==JSON.stringify(ps.map(p=>p.account_id)))throw new Error("PURCHASE_GROUP_MEMBER_MISMATCH");
+  let sum=0n;for(const p of ps){if(!/^(0|[1-9]\d*|-[1-9]\d*)$/.test(p.net))throw new Error("INVALID_NET");v4Units(p.net.replace('-',''));sum+=BigInt(p.net);}if(sum!==0n)throw new Error("UNBALANCED_ROUND");
+  fields.push(String(ps.length));for(const p of ps)fields.push(p.account_id,p.net);
+  return v4Digest(canonicalV4("purchase-group",c.network,c.vault,fields));
 }
 export function v4PrivateInvoiceCommitment(c:V4Deployment, spec:V4InvoiceSpec, salt:string):string {
   hash(salt);return v4Digest(canonicalV4("private-invoice",c.network,c.vault,[v4InvoiceHash(c,spec),salt]));
@@ -193,7 +238,7 @@ export class V4RpcProvider extends JsonRpcProvider {
   constructor(urls:string|readonly string[]){
     const endpoints=[...new Set(typeof urls==='string'?[urls]:urls)];
     if(!endpoints.length||endpoints.length>4)throw new Error('INVALID_RPC_ENDPOINTS');
-    for(const endpoint of endpoints){const u=new URL(endpoint);if(u.protocol!=='https:'&&!['127.0.0.1','localhost'].includes(u.hostname))throw new Error('INVALID_RPC_URL');}
+    for(const endpoint of endpoints)validateRpcUrl(endpoint);
     super({url:endpoints[0]},{retries:1});this.connections=endpoints.map(url=>new JsonRpcProvider({url},{retries:1}));
   }
   override sendJsonRpc:JsonRpcProvider['sendJsonRpc']=async(method,params)=>{
@@ -215,8 +260,17 @@ export class V4RpcProvider extends JsonRpcProvider {
     throw new Error('RPC_UNAVAILABLE');
   };
 }
+const signerQueues=new Map<string,Promise<void>>();
+export async function withV4SignerLock<T>(account:Account, task:()=>Promise<T>):Promise<T> {
+  const signer=account.getSigner();if(!signer)throw new Error("SIGNER_REQUIRED");
+  const key=`${account.accountId}:${String(await signer.getPublicKey())}`;
+  const previous=signerQueues.get(key)??Promise.resolve();
+  let unlock!:()=>void;const current=new Promise<void>(resolve=>{unlock=resolve;});signerQueues.set(key,current);
+  await previous;
+  try{return await task();}finally{unlock();if(signerQueues.get(key)===current)signerQueues.delete(key);}
+}
 export class V4NearTransport implements V4Transport {
-  readonly provider: JsonRpcProvider; readonly account: Account; private queue = Promise.resolve();
+  readonly provider: JsonRpcProvider; readonly account: Account;
   constructor(readonly account_id: string, rpc: string|readonly string[], signer: Signer | KeyPairString, private journal: V4Journal) {
     this.provider = new V4RpcProvider(rpc); this.account = new Account(account_id, this.provider, signer);
   }
@@ -229,13 +283,17 @@ export class V4NearTransport implements V4Transport {
     if (result === undefined) throw new Error("EMPTY_CONTRACT_VIEW"); return result as T;
   }
   async call<T>(contract: string, method: string, args: Record<string, unknown>, options: V4CallOptions): Promise<V4Confirmed<T>> {
-    // Serialize transactions for this signer; external processes must use distinct keys.
-    const previous = this.queue; let unlock!: () => void; this.queue = new Promise(resolve => { unlock = resolve; }); await previous;
-    try { return await this.submit<T>(contract, method, args, options); } finally { unlock(); }
+    // All transport instances and action batches sharing this key serialize.
+    // External processes must still use distinct keys.
+    return withV4SignerLock(this.account,()=>this.submit<T>(contract,method,args,options));
   }
-  private async submit<T>(contract: string, method: string, args: Record<string, unknown>, options: V4CallOptions): Promise<V4Confirmed<T>> {
+  async reconcile<T>(contract: string, method: string, args: Record<string, unknown>, options: V4CallOptions): Promise<V4Confirmed<T>> {
+    return withV4SignerLock(this.account,()=>this.submit<T>(contract,method,args,options,true));
+  }
+  private async submit<T>(contract: string, method: string, args: Record<string, unknown>, options: V4CallOptions, reconcileOnly=false): Promise<V4Confirmed<T>> {
     const payload_hash = v4Digest(stableJson({ signer: this.account_id, contract, method, args, deposit: String(options.deposit ?? 0n), gas: String(options.gas ?? 120_000_000_000_000n) }));
     const existing = await this.journal.get(options.operation_id);
+    if (!existing && reconcileOnly) throw new Error('TRANSACTION_NOT_RECORDED');
     let op: V4Operation;
     if (existing) {
       if (existing.payload_hash !== payload_hash) throw new Error("REQUEST_ID_CONFLICT");
@@ -244,11 +302,11 @@ export class V4NearTransport implements V4Transport {
       // Never create a new transaction/nonce after an uncertain broadcast.
       // NONE returns a definite missing-transaction result immediately. FINAL
       // can wait indefinitely for bytes that were rejected before inclusion.
-      try { const status = await this.provider.viewTransactionStatus({ txHash: existing.tx_hash, accountId: existing.signer_id, waitUntil: "NONE" }); return await this.confirm<T>(existing, status); }
+      try { const status = await this.provider.viewTransactionStatus({ txHash: existing.tx_hash, accountId: existing.signer_id, waitUntil: "NONE" }); return await this.confirm<T>(existing, status, true); }
       catch (error) {
         const current = await this.journal.get(existing.id);
         if (current?.state === "FAILED") throw new Error(current.error ?? "CHAIN_EXECUTION_FAILED");
-        if (!v4UnknownTransaction(error)) throw new V4BroadcastUnknown(existing.id, existing.tx_hash);
+        if (reconcileOnly || !v4UnknownTransaction(error)) throw new V4BroadcastUnknown(existing.id, existing.tx_hash);
         // Retry the exact signed bytes after reconciling a definite missing tx.
         // A crash before broadcast cannot strand an operation or create a new nonce.
         try { return await this.confirm<T>(existing, await this.provider.sendTransactionUntil(SignedTransaction.decode(Buffer.from(existing.signed_transaction, "base64")), "FINAL")); }
@@ -259,7 +317,7 @@ export class V4NearTransport implements V4Transport {
       const fresh = new Account(this.account_id,this.provider,signer);
       const transaction = await fresh.createTransaction({ receiverId: contract, actions: [actions.functionCall(method, args, options.gas ?? 120_000_000_000_000n, options.deposit ?? 0n)], publicKey: await signer.getPublicKey() });
       const signed = await signer.signTransaction(transaction);
-      op = { id: options.operation_id, payload_hash, signer_id: this.account_id, tx_hash: baseEncode(signed.txHash), signed_transaction: Buffer.from(signed.signedTransaction.encode()).toString("base64"), state: "SIGNED" };
+      op = { id: options.operation_id, payload_hash, signer_id: this.account_id, tx_hash: baseEncode(signed.txHash), signed_transaction: Buffer.from(signed.signedTransaction.encode()).toString("base64"), state: "SIGNED",created_at_ms:Date.now(),...(typeof(args.amount??args.expected_available)==='string'?{amount:String(args.amount??args.expected_available)}:{}) };
       await this.journal.put(op); // Durable before any broadcast.
     }
     try { const response = await this.provider.sendTransactionUntil(SignedTransaction.decode(Buffer.from(op.signed_transaction, "base64")), "FINAL"); return await this.confirm<T>(op, response); }
@@ -268,8 +326,9 @@ export class V4NearTransport implements V4Transport {
       op.state = "UNKNOWN"; await this.journal.put(op); throw new V4BroadcastUnknown(op.id, op.tx_hash);
     }
   }
-  private async confirm<T>(op: V4Operation, response: unknown): Promise<V4Confirmed<T>> {
-    const res = response as { status?: { SuccessValue?: string; Failure?: unknown }; transaction_outcome?: { outcome: { gas_burnt?: number; tokens_burnt?: string } }; receipts_outcome?: { outcome: { gas_burnt?: number; tokens_burnt?: string; status: { Failure?: unknown } } }[] };
+  private async confirm<T>(op: V4Operation, response: unknown, requireFinal=false): Promise<V4Confirmed<T>> {
+    const res = response as { final_execution_status?: string; status?: { SuccessValue?: string; Failure?: unknown }; transaction_outcome?: { outcome: { gas_burnt?: number; tokens_burnt?: string } }; receipts_outcome?: { outcome: { gas_burnt?: number; tokens_burnt?: string; status: { Failure?: unknown } } }[] };
+    if (requireFinal && res.final_execution_status !== 'FINAL' || res.final_execution_status && res.final_execution_status !== 'FINAL') throw new V4BroadcastUnknown(op.id, op.tx_hash);
     if (res.status?.Failure) { op.state = "FAILED"; op.error = "CHAIN_EXECUTION_FAILED"; await this.journal.put(op); throw new Error(op.error); }
     if (res.status?.SuccessValue === undefined) throw new V4BroadcastUnknown(op.id, op.tx_hash);
     const raw = Buffer.from(res.status.SuccessValue, "base64").toString();
@@ -284,24 +343,39 @@ export class V4NearTransport implements V4Transport {
 export class AchV4Client {
   readonly deployment: V4Deployment; private validated = false;
   constructor(config: V4Deployment, readonly transport: V4Transport, private role: "owner" | "agent" = "agent") { this.deployment = validateV4Deployment(config); }
-  async assertDeployment() {
-    if (this.validated) return;
+  async assertDeployment(refresh=false) {
+    if (this.validated&&!refresh) return;
     const c = await this.transport.view<Record<string, unknown>>(this.deployment.vault, "get_config", {});
     if (c.protocol_version !== 4 || c.network !== this.deployment.network || c.vault !== this.deployment.vault || c.token !== this.deployment.token || c.decimals !== 6) throw new Error("DEPLOYMENT_MISMATCH");
-    if (this.deployment.code_hash && this.transport.codeHash && await this.transport.codeHash(this.deployment.vault) !== this.deployment.code_hash) throw new Error("DEPLOYED_CODE_HASH_MISMATCH");
+    if(this.deployment.workflow_revision!==undefined&&c.workflow_revision!==this.deployment.workflow_revision)throw new Error("WORKFLOW_REVISION_MISMATCH");
+    if (this.deployment.code_hash) {
+      if (!this.transport.codeHash) throw new Error('CODE_HASH_VERIFICATION_REQUIRED');
+      if (await this.transport.codeHash(this.deployment.vault) !== this.deployment.code_hash) throw new Error("DEPLOYED_CODE_HASH_MISMATCH");
+    }
     this.validated = true;
   }
   private async read<T>(method: string, args: Record<string, unknown> = {}): Promise<T> { await this.assertDeployment(); return this.transport.view<T>(this.deployment.vault, method, args); }
   private async write<T>(method: string, args: Record<string, unknown>, operation_id: string, owner = false): Promise<V4Confirmed<T>> {
-    await this.assertDeployment(); if (owner && this.role !== "owner") throw new Error("OWNER_SIGNER_REQUIRED");
+    await this.assertDeployment(true); if (owner && this.role !== "owner") throw new Error("OWNER_SIGNER_REQUIRED");
     return this.transport.call<T>(this.deployment.vault, method, args, { operation_id, deposit: owner || this.role === "owner" ? 1n : 0n });
   }
   register(name: string, requestId = `register:${this.transport.account_id}`) { return this.write<V4Balance>("register_account", { name }, requestId, true); }
+  sponsorAccount(account_id:string,name:string,expires_at_ms:number,requestId:string) { account(account_id);integer(expires_at_ms);return this.write("authorize_account_registration",{account_id,name,expires_at_ms},requestId,true); }
   setPolicy(policy: Omit<V4Policy, "epoch" | "revoked">, requestId: string) { return this.write<V4Policy>("set_agent_policy", policy, requestId, true); }
   revokeAgent(requestId: string) { return this.write<V4Policy>("revoke_agent", {}, requestId, true); }
   balance(account_id = this.transport.account_id) { return this.read<V4Balance>("get_balance", { account_id }); }
   invoice(id: string) { return this.read<V4Invoice>("get_invoice", { id }); }
   round(id: string) { return this.read<V4Round>("get_round", { id }); }
+  purchaseGroup(id:string) { return this.read<V4FundingGroup>("get_purchase_group",{id}); }
+  purchaseOrder(id:string) { return this.read<{group_id:string;order:V4FundingOrder;status:string;invoice_id:string|null}|null>("get_purchase_order",{id}); }
+  proposePurchaseGroup(input:V4FundingGroupInput) { v4FundingGroupHash(this.deployment,input);return this.write<V4FundingGroup>("propose_purchase_group",{input},`purchase-group:${input.id}`); }
+  authorizePurchaseGroup(group:V4FundingGroup,expected_net:string) {
+    if(v4FundingGroupHash(this.deployment,group.input)!==group.hash)throw new Error("PURCHASE_GROUP_HASH_MISMATCH");
+    const own=group.input.positions.find(p=>p.account_id===this.transport.account_id);
+    if(!own||own.net!==expected_net)throw new Error("EXACT_NET_AUTHORIZATION_REQUIRED");
+    return this.write<V4FundingGroup>("authorize_purchase_group",{id:group.input.id,expected_hash:group.hash,expected_net},`fund:${group.input.id}:${this.transport.account_id}`);
+  }
+  expirePurchaseGroup(id:string) { return this.write<V4FundingGroup>("expire_purchase_group",{id},`expire-purchase-group:${id}`); }
   proposeInvoice(spec: V4InvoiceSpec) { canonicalV4Invoice(this.deployment, spec); return this.write<V4Invoice>("propose_invoice", { spec }, `invoice:${spec.id}`); }
   acceptInvoice(invoice: V4Invoice) { if (v4InvoiceHash(this.deployment, invoice.spec) !== invoice.hash) throw new Error("INVOICE_HASH_MISMATCH"); return this.write<V4Invoice>("accept_invoice", { id: invoice.spec.id, expected_hash: invoice.hash }, `accept:${invoice.spec.id}:${this.transport.account_id}`); }
   cancelInvoice(invoice: V4Invoice) { return this.write<V4Invoice>("cancel_invoice_by_agreement", { id: invoice.spec.id, expected_hash: invoice.hash }, `cancel-invoice:${invoice.spec.id}:${this.transport.account_id}`); }
@@ -326,14 +400,14 @@ export class AchV4Client {
   privateInvoice(id:string) { return this.read<{status:string;charge:{commitment:string;buyer:string};round_id:string|null}|null>("get_private_invoice",{id}); }
   privatePurchase(id:string) { return this.read<V4PrivatePurchaseAuthorization|null>("get_private_purchase",{id}); }
   cancelPendingPrivatePurchase(order:V4PrivatePurchaseAuthorization) { hash(order.charge_id);hash(order.order_commitment);return this.write<V4PrivatePurchaseAuthorization>("cancel_pending_private_purchase",{id:order.charge_id,expected_hash:order.order_commitment},`cancel-private-order:${order.charge_id}:${this.transport.account_id}`); }
-  authorizePrivatePurchase(request:{purchase_id:string;terms_version:number;seller:string;order_commitment:string}) {
+  authorizePrivatePurchase(request:{purchase_id:string;terms_version:number;seller:string;order_commitment:string;deadline_ms?:number}) {
     id(request.purchase_id);integer(request.terms_version);account(request.seller);hash(request.order_commitment);
     if(!request.terms_version||request.purchase_id.length<32)throw new Error("INVALID_PRIVATE_PURCHASE");
     const charge=v4ChargeId(this.deployment,{buyer:this.transport.account_id,purchase_id:request.purchase_id,terms_version:request.terms_version});
     return this.write<V4PrivatePurchaseAuthorization>("authorize_private_purchase",request,`private-purchase:${charge}`);
   }
   async requestPrivateRound(request:V4PrivateRoundRequest, sponsorPayment=20_000_000_000_000_000_000_000n) {
-    if(this.role!=="owner")throw new Error("OWNER_SPONSOR_SIGNER_REQUIRED");await this.assertDeployment();
+    if(this.role!=="owner")throw new Error("OWNER_SPONSOR_SIGNER_REQUIRED");await this.assertDeployment(true);
     const encryption=await this.privateEncryptionKey();if(!encryption)throw new Error("PRIVATE_MODE_UNAVAILABLE");
     const input_commitment=v4PrivateInputCommitment(this.deployment,request.id,request.deadline_ms,encryption.worker_hash,request.encrypted_invoices);
     v4PrivateDisclosureHash(this.deployment,input_commitment,request.members);
@@ -345,7 +419,7 @@ export class AchV4Client {
   recoveryWithdrawal(account_id=this.transport.account_id) { return this.read<V4Withdrawal & {sequence:number}>("get_recovery_withdrawal",{account_id}); }
   recoveryWithdraw(nonce:number,expected_available:V4Units) { integer(nonce);v4Units(expected_available);return this.write<V4Withdrawal>("request_recovery_withdrawal",{nonce,expected_available},`recovery:${this.transport.account_id}:${nonce}`,true); }
   async deposit(id: string, amount: V4Units) {
-    if (this.role !== "owner") throw new Error("OWNER_SIGNER_REQUIRED"); v4Units(amount); await this.assertDeployment();
-    return this.transport.call<V4Units>(this.deployment.token, "ft_transfer_call", { receiver_id: this.deployment.vault, amount, msg: "deposit" }, { operation_id: `deposit:${id}`, deposit: 1n, gas: 120_000_000_000_000n });
+    if (this.role !== "owner") throw new Error("OWNER_SIGNER_REQUIRED"); v4Units(amount); if(!/^[a-zA-Z0-9_.-]{1,96}$/.test(id))throw new Error("INVALID_ID");await this.assertDeployment(true);
+    return this.transport.call<V4Units>(this.deployment.token, "ft_transfer_call", { receiver_id: this.deployment.vault, amount, msg: `deposit:${id}` }, { operation_id: `deposit:${id}`, deposit: 1n, gas: 120_000_000_000_000n });
   }
 }

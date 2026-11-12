@@ -7,20 +7,29 @@ import { StateStore } from '../../services/lib/store.mjs';
 import { durableActions } from '../../services/lib/transactions.mjs';
 import {privateRoot,manifestPath,outlayerPath} from '../../services/lib/paths.mjs';
 import {sourceFingerprint} from './source.mjs';
+import {requireFreshAccounts,requireCurrentWorkflow,serviceLayout,requireServiceLayout,requireIdentityAccount,deploymentStorageShortfall,storageFundedDeploymentId}from '../../services/lib/workflow.mjs';
 
 const json = (filename) => JSON.parse(readFileSync(filename, 'utf8'));
 const encode = (value) => JSON.stringify(value, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2);
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 mkdirSync(privateRoot, { recursive: true, mode: 0o700 });
 const accounts = json(path.join(privateRoot, 'accounts.json'));
-if (accounts.network !== 'testnet' || !Object.values(accounts).filter(v => typeof v === 'string' && v.endsWith('.testnet')).every(v => v.startsWith('ach-'))) throw new Error('FRESH_ACH_TESTNET_ACCOUNTS_REQUIRED');
+requireFreshAccounts(accounts);
+const layout=serviceLayout(accounts);
 const build = json('docs/v4/build.json');
+requireCurrentWorkflow(build);
 const previousManifest = existsSync(manifestPath) ? json(manifestPath) : null;
 if (previousManifest && (previousManifest.vault !== accounts.vault || previousManifest.token !== accounts.token)) throw new Error('EXISTING_DEPLOYMENT_CONFLICT');
+if(previousManifest)requireServiceLayout(previousManifest);
+const contextIndex=process.argv.indexOf('--git-context');
+const gitContext=contextIndex<0?undefined:json(process.argv[contextIndex+1]);
+const verifiedSource=sourceFingerprint(gitContext);
 const provider = new JsonRpcProvider({ url: accounts.rpc_url });
 const journal = new StateStore(path.join(privateRoot, 'deployment.sqlite'));
 const evidence = [];
 let coordinator;
+let root;
+let storagePrice;
 
 function saveIdentity(filename, accountId, role) {
   if (existsSync(filename)) { const identity = json(filename); if (identity.account_id !== accountId) throw new Error('IDENTITY_CONFLICT'); return identity; }
@@ -36,7 +45,24 @@ async function deploy(role) {
   const bytes = readFileSync(artifact.path);
   if (digest(bytes) !== artifact.sha256 || bytes.length !== artifact.bytes) throw new Error('ARTIFACT_HASH_MISMATCH');
   const account = new Account(identity.account_id, provider, identity.secret_key);
-  const result = await durableActions(account, journal, `deploy:${role}:${artifact.sha256}`, identity.account_id, [actions.deployContract(bytes)]);
+  const prior=await provider.viewAccount({accountId:identity.account_id,blockQuery:{finality:'final'}});
+  let operationId=`deploy:${role}:${artifact.sha256}`;
+  const old=await journal.get(operationId);
+  if(old?.state==='FAILED'){
+    if(prior.code_hash!=='11111111111111111111111111111111')throw new Error('FAILED_DEPLOYMENT_ACCOUNT_CHANGED');
+    const status=await provider.viewTransactionStatus({txHash:old.tx_hash,accountId:identity.account_id,waitUntil:'FINAL'});
+    operationId=storageFundedDeploymentId(old,status,identity.account_id);
+  }
+  if(prior.code_hash==='11111111111111111111111111111111'){
+    const shortage=deploymentStorageShortfall(prior,bytes.length,storagePrice),funding=1_000_000_000_000_000_000_000_000n;
+    if(shortage>funding)throw new Error('DEPLOYMENT_NATIVE_STORAGE_BUDGET_REQUIRED');
+    if(shortage){
+      evidence.push({kind:`fund-${role}-deployment-storage`,...await durableActions(root,journal,`fund-deployment:${role}:${artifact.sha256}`,identity.account_id,[actions.transfer(funding)])});
+      const funded=await provider.viewAccount({accountId:identity.account_id,blockQuery:{finality:'final'}});
+      if(deploymentStorageShortfall(funded,bytes.length,storagePrice))throw new Error('DEPLOYMENT_NATIVE_STORAGE_FUNDING_UNCONFIRMED');
+    }
+  }
+  const result = await durableActions(account, journal, operationId, identity.account_id, [actions.deployContract(bytes)]);
   evidence.push({ kind: `deploy-${role}`, ...result });
   const chain = await provider.viewAccount({ accountId: identity.account_id, blockQuery: { finality: 'final' } });
   const codeHash = baseEncode(createHash('sha256').update(bytes).digest());
@@ -44,11 +70,22 @@ async function deploy(role) {
   return { identity, account, code_hash: codeHash, transport: new V4NearTransport(identity.account_id, accounts.rpc_url, identity.secret_key, journal) };
 }
 try {
+  // Check before any funding, account creation or code replacement. Never
+  // apply this workflow to a historical vault with unsecured accepted bills.
+  const existing=await provider.viewAccount({accountId:accounts.vault,blockQuery:{finality:'final'}});
+  if(existing.code_hash!=='11111111111111111111111111111111'){
+    const current=await provider.callFunction({contractId:accounts.vault,method:'get_config',args:{},blockQuery:{finality:'final'}});
+    requireCurrentWorkflow(current);
+    if(current.vault!==accounts.vault||current.token!==accounts.token)throw new Error('ONCHAIN_CONFIGURATION_MISMATCH');
+  }
   const rootIdentity = json(path.join(privateRoot, 'root.json'));
-  const root = new Account(rootIdentity.account_id, provider, rootIdentity.secret_key);
+  requireIdentityAccount(accounts,'root',rootIdentity);
+  root = new Account(rootIdentity.account_id, provider, rootIdentity.secret_key);
+  const protocol=await provider.sendJsonRpc('EXPERIMENTAL_protocol_config',{finality:'final'});
+  storagePrice=protocol.runtime_config?.storage_amount_per_byte;
   const owner = saveIdentity(path.join(privateRoot, 'coordinator-owner.json'), `desk.${rootIdentity.account_id}`, 'sponsor');
   coordinator = saveIdentity(path.join(privateRoot, 'coordinator.json'), owner.account_id, 'agent');
-  const coordinatorMethods = ['propose_round', 'settle_round', 'expire_round', 'release_stale_round', 'expire_private_request'];
+  const coordinatorMethods = ['propose_round', 'settle_round', 'expire_round', 'release_stale_round', 'expire_private_request','expire_purchase_group'];
   const created = await durableActions(root, journal, 'create-coordinator', coordinator.account_id, [actions.createAccount(), actions.transfer(300_000_000_000_000_000_000_000n), actions.addFullAccessKey(KeyPair.fromString(owner.secret_key).getPublicKey()), actions.addFunctionCallAccessKey(KeyPair.fromString(coordinator.secret_key).getPublicKey(), accounts.vault, coordinatorMethods, 100_000_000_000_000_000_000_000n)]);
   evidence.push({ kind: 'create-coordinator', ...created });
   const token = await deploy('token');
@@ -70,7 +107,7 @@ try {
   }
   const tokenReserve = await durableActions(token.transport.account, journal, reserveId, accounts.vault, [actions.transfer(6_000_000_000_000_000_000_000_000n)]);
   evidence.push({ kind: 'native-storage-sponsorship', ...tokenReserve });
-  const config = { protocol_version: 4, network: 'testnet', vault: accounts.vault, token: accounts.token, decimals: 6, rpc_url: accounts.rpc_url, code_hash: vault.code_hash };
+  const config = { protocol_version: 4, workflow_revision:2, network: 'testnet', root:accounts.root, vault: accounts.vault, token: accounts.token, decimals: 6, rpc_url: accounts.rpc_url, code_hash: vault.code_hash };
   const coordinatorOwner = new AchV4Client(config, new V4NearTransport(owner.account_id, accounts.rpc_url, owner.secret_key, journal), 'owner');
   await coordinatorOwner.register('Clearing coordinator');
   const coordinatorPolicy=(await coordinatorOwner.balance()).policy;
@@ -79,7 +116,7 @@ try {
   const rootTransport = new V4NearTransport(accounts.root, accounts.rpc_url, rootIdentity.secret_key, journal);
   await rootTransport.call(accounts.token, 'storage_deposit', { account_id: accounts.vault }, { operation_id: 'register-vault-token', deposit: 0n });
   const onchainConfig = await vault.transport.view(accounts.vault, 'get_config', {});
-  if (onchainConfig.token !== config.token || onchainConfig.protocol_version !== 4 || onchainConfig.coordinator_id !== coordinator.account_id) throw new Error('ONCHAIN_CONFIGURATION_MISMATCH');
+  if (onchainConfig.token !== config.token || onchainConfig.protocol_version !== 4 || onchainConfig.workflow_revision!==2 || onchainConfig.coordinator_id !== coordinator.account_id) throw new Error('ONCHAIN_CONFIGURATION_MISMATCH');
   const metadata = await rootTransport.view(accounts.token, 'ft_metadata', {});
   if (metadata.decimals !== 6 || metadata.symbol !== 'tUSDC') throw new Error('SETTLEMENT_TOKEN_METADATA_MISMATCH');
   const keys = await provider.viewAccessKeyList({ accountId: accounts.vault, finalityQuery: { finality: 'final' } });
@@ -88,11 +125,11 @@ try {
   if (custody !== backing.tracked_token_custody || !backing.claims_equal_tracked_custody) throw new Error('INDEPENDENT_TOKEN_BACKING_MISMATCH');
   const manifest = {
     ...config, status: 'deployed', deployed_at: new Date().toISOString(), symbol: 'tUSDC', token_has_monetary_value: false,
-    source: sourceFingerprint(), artifacts: build.artifacts, coordinator_id: coordinator.account_id,
+    source: verifiedSource, artifacts: build.artifacts, coordinator_id: coordinator.account_id,
     verification: { code_hash_verified: true, token_metadata_verified: true, token_backing_verified: true },
     custody: { vault_access_keys: keys.keys, upgrade_authority_remaining: keys.keys.some(k => k.access_key.permission === 'FullAccess'), test_accounts: 'Hosted demo identities; external agents keep their own signers.' },
-    services: previousManifest?.services ?? { coordinator: 'http://127.0.0.1:52180', demo: 'http://127.0.0.1:4181', research: 'http://127.0.0.1:4191', visual: 'http://127.0.0.1:4192', audit: 'http://127.0.0.1:4193' },
-    sponsor_limits: { dailyLimit: 12, ipLimit: 5, maxNative: '26000000000000000000000000', perSessionNative: '2000000000000000000000000', vaultStorageNative:'800000000000000000000000', ...(previousManifest?.sponsor_limits ?? {}) },
+    service_layout:{unit:layout.unit,ports:layout.ports},services:layout.services,
+    sponsor_limits: { maxNative: '26000000000000000000000000', perSessionNative: '2000000000000000000000000', vaultStorageNative:'800000000000000000000000', maxPlannerCallsPerDay:2000, ...(previousManifest?.sponsor_limits ?? {}), dailyLimit:null, ipLimit:null, intervalMs:10000 },
     limits: { round_participants: 12, round_invoices: 48, private_round_invoices:6, private_invoice_padding_bytes:2048, gas_verified: false },
     private: privateConfig ?? { enabled: false, state: 'pending-live-verification' },
     intents: previousManifest?.intents ?? { dry_quotes_enabled: false, mainnet_routes_exercised: false },

@@ -2,6 +2,8 @@ use ach_protocol::*;
 use ach_runtime::{Call,Context,Store,Transaction};
 use serde::{Deserialize,Serialize};
 use serde_json::{json,Value};
+mod purchases;
+pub use purchases::{FundingGroup,FundingGroupInput,FundingOrder,PublicPurchaseTerms,PurchaseAuthorization};
 
 const CONFIG:&str="config";
 const ACTIVE_LIMIT:u32=4;
@@ -15,19 +17,21 @@ pub struct Config {
     pub private_worker:Option<PrivateWorker>,
     pub total_balances:Amount,pub pending_withdrawals:Amount,pub tracked_token_custody:Amount,
     pub accounts:u64,pub invoices:u64,pub rounds:u64,pub withdrawals:u64,pub settled_rounds:u64,
+    #[serde(default="legacy_workflow_revision")]pub workflow_revision:u32,
 }
+fn legacy_workflow_revision()->u32{1}
 #[derive(Clone,Debug,Serialize,Deserialize,PartialEq,Eq)]
 #[serde(deny_unknown_fields)]
 pub struct PrivateWorker {pub outlayer_account:String,pub url:String,pub hash:String,pub profile:String}
 #[derive(Clone,Debug,Serialize,Deserialize)]
-pub struct Wallet {pub account_id:String,pub name:String,pub balance:Amount,pub reserved:Amount,pub pending_withdrawals:Amount,pub policy_epoch:u64,pub active_proposals:u32,pub active_authorizations:u32,pub invoice_count:u64,pub activity_count:u64}
+pub struct Wallet {pub account_id:String,pub name:String,pub balance:Amount,pub reserved:Amount,pub pending_withdrawals:Amount,pub policy_epoch:u64,pub active_proposals:u32,pub active_authorizations:u32,pub invoice_count:u64,pub activity_count:u64,#[serde(default)]pub sponsored_records:u64}
 #[derive(Clone,Debug,Serialize,Deserialize,PartialEq,Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Policy {pub key:String,pub epoch:u64,pub max_invoice:Amount,pub gross_budget:Amount,pub max_net_commitment:Amount,pub expires_at_ms:u64,pub counterparties:Vec<String>,pub services:Vec<String>,pub revoked:bool,pub activity_sequence:u64}
 #[derive(Clone,Debug,Serialize,Deserialize,PartialEq,Eq)]
 pub struct Acceptance {pub owner:bool,pub epoch:u64,pub key:String,pub budget_charge:Amount}
 #[derive(Clone,Debug,Serialize,Deserialize)]
-pub struct Invoice {pub spec:InvoiceSpec,pub hash:String,pub charge_id:String,pub status:String,pub buyer_acceptance:Option<Acceptance>,pub seller_acceptance:Option<Acceptance>,pub buyer_cancelled:bool,pub seller_cancelled:bool,pub round_id:Option<String>,pub sequence:u64,pub buyer_activity_sequence:u64,pub seller_activity_sequence:u64}
+pub struct Invoice {pub spec:InvoiceSpec,pub hash:String,pub charge_id:String,pub status:String,pub buyer_acceptance:Option<Acceptance>,pub seller_acceptance:Option<Acceptance>,pub buyer_cancelled:bool,pub seller_cancelled:bool,pub round_id:Option<String>,#[serde(default)]pub funding_group_id:Option<String>,pub sequence:u64,pub buyer_activity_sequence:u64,pub seller_activity_sequence:u64}
 #[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct Approval {pub account_id:String,pub expected_net:String,pub authority:Acceptance,pub required:Amount,pub approved_at_ms:u64,pub activity_sequence:u64}
 #[derive(Clone,Debug,Serialize,Deserialize)]
@@ -40,14 +44,14 @@ pub struct Activity {pub sequence:u64,pub at_ms:u64,pub kind:String,pub referenc
 #[serde(deny_unknown_fields)]
 pub struct PolicySnapshot {pub account_id:String,pub policy:Policy}
 #[derive(Clone,Debug,Serialize,Deserialize)]
-pub struct PrivateRequest {pub id:String,pub requester:String,pub input_commitment:String,pub profile:String,pub deadline_ms:u64,pub worker_hash:String,pub policies:Vec<PolicySnapshot>,pub prior_charges:Vec<PrivateCharge>,pub invoice_commitments:Vec<(String,String)>,#[serde(default)]pub verification_only:bool,pub status:String}
+pub struct PrivateRequest {pub id:String,pub requester:String,pub input_commitment:String,pub profile:String,pub deadline_ms:u64,pub worker_hash:String,pub policies:Vec<PolicySnapshot>,pub prior_charges:Vec<PrivateCharge>,pub invoice_commitments:Vec<(String,String)>,#[serde(default)]pub verification_only:bool,#[serde(default)]pub funding_group_id:Option<String>,pub status:String}
 #[derive(Clone,Debug,Serialize,Deserialize,PartialEq,Eq)]
 #[serde(deny_unknown_fields)]
 pub struct PrivateCharge {pub nullifier:String,pub commitment:String,pub buyer:String,pub policy_epoch:u64}
 #[derive(Clone,Debug,Serialize,Deserialize)]
 pub struct PrivateInvoice {pub charge:PrivateCharge,pub budget_charge:Amount,pub status:String,pub round_id:Option<String>}
 #[derive(Clone,Debug,Serialize,Deserialize,PartialEq,Eq)]
-pub struct PrivatePurchaseAuthorization {pub charge_id:String,pub purchase_id:String,pub terms_version:u32,pub buyer:String,pub seller:String,pub order_commitment:String,pub policy_epoch:u64,pub budget_charge:Amount,pub status:String,#[serde(default)]pub buyer_cancelled:bool,#[serde(default)]pub seller_cancelled:bool}
+pub struct PrivatePurchaseAuthorization {pub charge_id:String,pub purchase_id:String,pub terms_version:u32,pub buyer:String,pub seller:String,pub order_commitment:String,pub policy_epoch:u64,pub budget_charge:Amount,pub status:String,#[serde(default)]pub buyer_cancelled:bool,#[serde(default)]pub seller_cancelled:bool,#[serde(default)]pub expires_at_ms:u64,#[serde(default)]pub funding_group_id:Option<String>}
 #[derive(Clone,Debug,Serialize,Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PrivateResult {pub protocol_version:u32,pub operation:String,pub request_id:String,pub input_commitment:String,pub worker_hash:String,pub deadline_ms:u64,pub positions:Vec<Position>,pub charges:Vec<PrivateCharge>,pub policy_epochs:Vec<PolicySnapshot>,pub previous_nullifiers:Vec<String>}
@@ -58,7 +62,8 @@ pub struct PrivateEncryptionKey {pub protocol_version:u32,pub worker_hash:String
 
 #[derive(Deserialize)]#[serde(deny_unknown_fields)]struct Init {network:String,token:String,owner_id:String,coordinator_id:String,private_worker:Option<PrivateWorker>}
 #[derive(Deserialize)]#[serde(deny_unknown_fields)]struct Register {name:String}
-#[derive(Deserialize)]#[serde(deny_unknown_fields)]struct AuthorizePrivatePurchase {purchase_id:String,terms_version:u32,seller:String,order_commitment:String}
+#[derive(Deserialize,Serialize)]#[serde(deny_unknown_fields)]struct RegistrationVoucher {account_id:String,name:String,expires_at_ms:u64}
+#[derive(Deserialize)]#[serde(deny_unknown_fields)]struct AuthorizePrivatePurchase {purchase_id:String,terms_version:u32,seller:String,order_commitment:String,#[serde(default)]deadline_ms:u64}
 #[derive(Deserialize)]#[serde(deny_unknown_fields)]struct SetPolicy {key:String,max_invoice:Amount,gross_budget:Amount,max_net_commitment:Amount,expires_at_ms:u64,counterparties:Vec<String>,services:Vec<String>}
 #[derive(Deserialize)]#[serde(deny_unknown_fields)]struct InvoiceArgs {spec:InvoiceSpec}
 #[derive(Deserialize)]#[serde(deny_unknown_fields)]struct ExactInvoice {id:String,expected_hash:String}
@@ -72,7 +77,7 @@ fn page_size()->u32{25}
 #[derive(Deserialize)]#[serde(deny_unknown_fields)]struct TokenDeposit {sender_id:String,amount:Amount,msg:String}
 #[derive(Deserialize)]#[serde(deny_unknown_fields)]struct WithdrawalArgs {id:String,amount:Amount,receiver_id:String}
 #[derive(Deserialize)]#[serde(deny_unknown_fields)]struct RecoveryWithdrawalArgs {nonce:u64,expected_available:Amount}
-#[derive(Deserialize)]#[serde(deny_unknown_fields)]struct PrivateArgs {id:String,input_commitment:String,profile:String,members:Vec<String>,deadline_ms:u64,encrypted_invoices:Vec<EncryptedInvoice>,#[serde(default)]verification_only:bool,#[serde(default)]disclosure_signatures:Vec<PrivateDisclosureSignature>}
+#[derive(Deserialize)]#[serde(deny_unknown_fields)]struct PrivateArgs {id:String,input_commitment:String,profile:String,members:Vec<String>,deadline_ms:u64,encrypted_invoices:Vec<EncryptedInvoice>,#[serde(default)]verification_only:bool,#[serde(default)]disclosure_signatures:Vec<PrivateDisclosureSignature>,#[serde(default)]funding_group_id:Option<String>}
 #[derive(Deserialize)]#[serde(deny_unknown_fields)]struct PinWorker {worker:PrivateWorker}
 #[derive(Deserialize)]#[serde(deny_unknown_fields)]struct KeyRequest {profile:String}
 
@@ -86,9 +91,17 @@ impl<'a,S:Store> Vault<'a,S>{
     fn wallet(&self,id:&str)->Result<Wallet>{self.s.read(&key("account",id))?.ok_or_else(||"ACCOUNT_NOT_REGISTERED".into())}
     fn save_wallet(&mut self,w:&Wallet)->Result<()>{self.s.write(&key("account",&w.account_id),w)}
     fn invoice(&self,id:&str)->Result<Invoice>{self.s.read(&key("invoice",id))?.ok_or_else(||"INVOICE_NOT_FOUND".into())}
-    fn save_invoice(&mut self,i:&Invoice)->Result<()>{self.s.write(&key("invoice",&i.spec.id),i)}
+    fn save_invoice(&mut self,i:&Invoice)->Result<()>{
+        let k=key("invoice",&i.spec.id);self.s.write(&k,i)?;
+        let mut terminal=i.clone();terminal.status="CANCELLED".into();terminal.round_id=Some("r".repeat(96));
+        self.s.reserve_for(&k,&terminal)
+    }
     fn round(&self,id:&str)->Result<Round>{self.s.read(&key("round",id))?.ok_or_else(||"ROUND_NOT_FOUND".into())}
-    fn save_round(&mut self,r:&Round)->Result<()>{self.s.write(&key("round",&r.input.id),r)}
+    fn save_round(&mut self,r:&Round)->Result<()>{
+        let k=key("round",&r.input.id);self.s.write(&k,r)?;
+        let mut terminal=r.clone();terminal.status="COLLECTING".into();terminal.ready_at_ms=Some(u64::MAX);terminal.settled_at_ms=Some(u64::MAX);terminal.reason=Some("r".repeat(96));
+        self.s.reserve_for(&k,&terminal)
+    }
     fn policy(&self,id:&str)->Result<Policy>{self.s.read(&key("policy",id))?.ok_or_else(||"AGENT_POLICY_REQUIRED".into())}
     fn owner(&self)->Result<()> {ensure(self.ctx.predecessor==self.ctx.signer && self.ctx.attached==1,"OWNER_AUTHORIZATION_REQUIRED")}
     fn authority(&self,account:&str,invoice:Option<&InvoiceSpec>,buy:bool)->Result<Acceptance>{
@@ -118,6 +131,7 @@ impl<'a,S:Store> Vault<'a,S>{
         self.s.write(&format!("budget:{account}:{}",a.epoch),&Amount(next))?;a.budget_charge=Amount(amount);Ok(())
     }
     fn activity(&mut self,account:&str,kind:&str,reference:&str,amount:Option<Amount>)->Result<()> {
+        if self.c.workflow_revision>=2{self.sponsored_record(account)?;}
         let mut w=self.wallet(account)?;let n=w.activity_count;w.activity_count+=1;self.save_wallet(&w)?;
         self.s.write(&format!("activity:{account}:{n}"),&Activity{sequence:n,at_ms:self.ctx.now_ms,kind:kind.into(),reference:reference.into(),amount})?;
         self.events.push(json!({"standard":"ach","version":"4.0.0","event":kind,"data":[{"account_id":account,"reference":reference,"amount":amount,"at_ms":self.ctx.now_ms}]}));Ok(())
@@ -131,10 +145,27 @@ impl<'a,S:Store> Vault<'a,S>{
         ensure(self.ctx.predecessor==self.ctx.signer && self.ctx.attached<=1,"DIRECT_ACCOUNT_AUTHORIZATION_REQUIRED")?;
         valid_account(&self.ctx.predecessor)?;ensure(!a.name.is_empty() && a.name.len()<=64 && !a.name.chars().any(char::is_control),"INVALID_NAME")?;
         if let Some(w)=self.s.read::<Wallet>(&key("account",&self.ctx.predecessor))?{ensure(w.name==a.name,"REQUEST_ID_CONFLICT")?;return value(&w)}
-        let w=Wallet{account_id:self.ctx.predecessor.clone(),name:a.name,balance:Amount(0),reserved:Amount(0),pending_withdrawals:Amount(0),policy_epoch:0,active_proposals:0,active_authorizations:0,invoice_count:0,activity_count:0};
+        if self.c.workflow_revision>=2{
+            ensure(self.c.accounts<512,"SPONSORED_ACCOUNT_LIMIT")?;
+            if self.ctx.predecessor!=self.c.owner_id && self.ctx.predecessor!=self.c.coordinator_id{
+                let voucher:RegistrationVoucher=self.s.read(&key("registration-voucher",&self.ctx.predecessor))?.ok_or("ACCOUNT_STORAGE_SPONSORSHIP_REQUIRED")?;
+                ensure(voucher.name==a.name && self.ctx.now_ms<voucher.expires_at_ms,"ACCOUNT_STORAGE_SPONSORSHIP_EXPIRED")?;
+                self.s.remove(&key("registration-voucher",&self.ctx.predecessor));
+            }
+        }
+        let w=Wallet{account_id:self.ctx.predecessor.clone(),name:a.name,balance:Amount(0),reserved:Amount(0),pending_withdrawals:Amount(0),policy_epoch:0,active_proposals:0,active_authorizations:0,invoice_count:0,activity_count:0,sponsored_records:0};
         self.s.write(&format!("account-index:{}",self.c.accounts),&w.account_id)?;self.c.accounts+=1;self.save_wallet(&w)?;
         let recovery=Withdrawal{id:format!("recovery-0-{}",w.account_id),account_id:w.account_id.clone(),receiver_id:w.account_id.clone(),amount:Amount(0),status:"UNUSED".into(),requested_at_ms:0,completed_at_ms:None,sequence:0,activity_sequence:0};
         self.s.write(&key("recovery-withdrawal",&w.account_id),&recovery)?;self.activity(&w.account_id,"recovery-slot-reserved",&recovery.id,None)?;value(&w)
+    }
+    fn authorize_registration(&mut self,a:RegistrationVoucher)->Result<Value>{
+        self.owner()?;ensure(self.ctx.predecessor==self.c.owner_id,"STORAGE_SPONSOR_REQUIRED")?;
+        valid_account(&a.account_id)?;ensure(!a.name.is_empty() && a.name.len()<=64 && !a.name.chars().any(char::is_control),"INVALID_NAME")?;
+        ensure(a.expires_at_ms>self.ctx.now_ms && a.expires_at_ms<=self.ctx.now_ms+86_400_000,"INVALID_SPONSORSHIP_DEADLINE")?;
+        if let Some(w)=self.s.read::<Wallet>(&key("account",&a.account_id))?{ensure(w.name==a.name,"REQUEST_ID_CONFLICT")?;return value(&w)}
+        let k=key("registration-voucher",&a.account_id);
+        if let Some(v)=self.s.read::<RegistrationVoucher>(&k)?{ensure(v.name==a.name,"REQUEST_ID_CONFLICT")?;if v.expires_at_ms>=a.expires_at_ms{return value(&v)}}
+        self.s.write(&k,&a)?;value(&a)
     }
     fn set_policy(&mut self,a:SetPolicy)->Result<Value>{
         self.owner()?;let mut w=self.wallet(&self.ctx.predecessor)?;valid_hash(&a.key)?;
@@ -147,10 +178,16 @@ impl<'a,S:Store> Vault<'a,S>{
     fn revoke(&mut self)->Result<Value>{self.owner()?;let id=self.ctx.predecessor.clone();let mut p=self.policy(&id)?;if p.revoked{return value(&p)}p.revoked=true;self.s.write(&key("policy",&id),&p)?;self.recovery=true;self.finish_activity(&id,p.activity_sequence,"agent-revoked",&p.epoch.to_string(),None)?;value(&p)}
     fn deposit(&mut self,a:TokenDeposit)->Result<Value>{
         ensure(self.ctx.predecessor==self.c.token,"TOKEN_CALLBACK_ONLY")?;
-        ensure(a.msg.is_empty() || a.msg=="deposit","INVALID_DEPOSIT_MESSAGE")?;
-        ensure(a.amount.0>0,"INVALID_AMOUNT")?;let mut w=self.wallet(&a.sender_id)?;
+        ensure(a.amount.0>0,"INVALID_AMOUNT")?;
+        let reference=if let Some(id)=a.msg.strip_prefix("deposit:"){
+            valid_id(id)?;let receipt=key("deposit-receipt",&format!("{}:{id}",a.sender_id));
+            if let Some(previous)=self.s.read::<Amount>(&receipt)?{ensure(previous==a.amount,"REQUEST_ID_CONFLICT")?;return value(&a.amount)}
+            if self.c.workflow_revision>=2{self.sponsored_record(&a.sender_id)?;}
+            self.s.write(&receipt,&a.amount)?;format!("deposit-{id}")
+        }else{ensure(a.msg.is_empty() || a.msg=="deposit","INVALID_DEPOSIT_MESSAGE")?;self.c.token.clone()};
+        let mut w=self.wallet(&a.sender_id)?;
         w.balance=Amount(add(w.balance.0,a.amount.0)?);self.c.total_balances=Amount(add(self.c.total_balances.0,a.amount.0)?);self.c.tracked_token_custody=Amount(add(self.c.tracked_token_custody.0,a.amount.0)?);
-        self.save_wallet(&w)?;self.activity(&w.account_id,"deposit",&self.c.token.clone(),Some(a.amount))?;Ok(json!("0"))
+        self.save_wallet(&w)?;self.activity(&w.account_id,"deposit",&reference,Some(a.amount))?;Ok(json!("0"))
     }
     fn propose_invoice(&mut self,a:InvoiceArgs)->Result<Value>{
         a.spec.validate(&self.c.token)?;
@@ -160,12 +197,18 @@ impl<'a,S:Store> Vault<'a,S>{
         if let Some(i)=self.s.read::<Invoice>(&key("invoice",&a.spec.id))?{ensure(i.hash==h,"REQUEST_ID_CONFLICT")?;return value(&i)}
         ensure(a.spec.expires_at_ms>self.ctx.now_ms && a.spec.expires_at_ms<=self.ctx.now_ms+7*86_400_000,"INVALID_DEADLINE")?;
         self.wallet(&a.spec.buyer)?;self.wallet(&a.spec.seller)?;
-        let charge=a.spec.charge_id(&self.c.network,&self.c.vault);ensure(self.s.get(&key("charge",&charge)).is_none(),"PURCHASE_ALREADY_INVOICED")?;
-        let buyer_activity_sequence=self.wallet(&a.spec.buyer)?.activity_count;let seller_activity_sequence=self.wallet(&a.spec.seller)?.activity_count;
-        let i=Invoice{spec:a.spec,hash:h,charge_id:charge.clone(),status:"PROPOSED".into(),buyer_acceptance:None,seller_acceptance:None,buyer_cancelled:false,seller_cancelled:false,round_id:None,sequence:self.c.invoices,buyer_activity_sequence,seller_activity_sequence};
-        self.s.write(&key("charge",&charge),&json!({"mode":"public","id":i.spec.id,"commitment":i.hash}))?;
+        let order=if self.c.workflow_revision>=2{Some(self.purchase_for_invoice(&a.spec)?)}else{None};
+        let charge=a.spec.charge_id(&self.c.network,&self.c.vault);
+        if order.is_none(){ensure(self.s.get(&key("charge",&charge)).is_none(),"PURCHASE_ALREADY_INVOICED")?;}
+        else{ensure(order.as_ref().unwrap().invoice_id.is_none(),"PURCHASE_ALREADY_INVOICED")?;}
+        let buyer_activity_sequence=if order.is_some(){self.order_activity_sequence(&charge,&a.spec.buyer)?}else{self.wallet(&a.spec.buyer)?.activity_count};
+        let seller_activity_sequence=if order.is_some(){self.order_activity_sequence(&charge,&a.spec.seller)?}else{self.wallet(&a.spec.seller)?.activity_count};
+        let funded=order.is_some();
+        let i=Invoice{spec:a.spec,hash:h,charge_id:charge.clone(),status:"PROPOSED".into(),buyer_acceptance:order.as_ref().map(|o|o.authority.clone()),seller_acceptance:None,buyer_cancelled:false,seller_cancelled:false,round_id:None,funding_group_id:order.as_ref().map(|o|o.group_id.clone()),sequence:self.c.invoices,buyer_activity_sequence,seller_activity_sequence};
+        if let Some(mut order)=order{order.invoice_id=Some(i.spec.id.clone());self.s.write(&key("purchase-order",&charge),&order)?;}
+        else{self.s.write(&key("charge",&charge),&json!({"mode":"public","id":i.spec.id,"commitment":i.hash}))?;}
         self.s.write(&format!("invoice-index:{}",self.c.invoices),&i.spec.id)?;self.c.invoices+=1;self.save_invoice(&i)?;
-        for party in [&i.spec.buyer,&i.spec.seller]{let mut w=self.wallet(party)?;self.s.write(&format!("account-invoice:{party}:{}",w.invoice_count),&i.spec.id)?;w.invoice_count+=1;self.save_wallet(&w)?;self.activity(party,"invoice-proposed",&i.spec.id,Some(i.spec.amount))?;}value(&i)
+        for party in [&i.spec.buyer,&i.spec.seller]{let mut w=self.wallet(party)?;self.s.write(&format!("account-invoice:{party}:{}",w.invoice_count),&i.spec.id)?;w.invoice_count+=1;self.save_wallet(&w)?;if funded{self.finish_activity(party,if *party==i.spec.buyer{i.buyer_activity_sequence}else{i.seller_activity_sequence},"invoice-proposed",&i.spec.id,Some(i.spec.amount))?;}else{self.activity(party,"invoice-proposed",&i.spec.id,Some(i.spec.amount))?;}}value(&i)
     }
     fn accept_invoice(&mut self,a:ExactInvoice)->Result<Value>{
         let mut i=self.invoice(&a.id)?;ensure(i.hash==a.expected_hash,"INVOICE_HASH_MISMATCH")?;
@@ -175,11 +218,14 @@ impl<'a,S:Store> Vault<'a,S>{
         ensure(i.status=="PROPOSED" && self.ctx.now_ms<i.spec.expires_at_ms,"INVOICE_NOT_ACCEPTABLE")?;
         if buy {self.charge_budget(&i.spec.buyer,&mut authority,i.spec.amount.0)?;i.buyer_acceptance=Some(authority);}else{i.seller_acceptance=Some(authority);}
         if i.buyer_acceptance.is_some() && i.seller_acceptance.is_some(){i.status="ACCEPTED".into();}
-        self.save_invoice(&i)?;self.finish_activity(&self.ctx.predecessor.clone(),if buy{i.buyer_activity_sequence}else{i.seller_activity_sequence},"invoice-authorized",&i.spec.id,Some(i.spec.amount))?;value(&i)
+        self.save_invoice(&i)?;self.finish_activity(&self.ctx.predecessor.clone(),if buy{i.buyer_activity_sequence}else{i.seller_activity_sequence},"invoice-authorized",&i.spec.id,Some(i.spec.amount))?;
+        if self.c.workflow_revision>=2 && i.status=="ACCEPTED"{let order:PurchaseAuthorization=self.s.read(&key("purchase-order",&i.charge_id))?.ok_or("BUYER_FUNDED_ORDER_REQUIRED")?;self.ready_public_purchase_group(&order.group_id)?;i=self.invoice(&i.spec.id)?;}
+        value(&i)
     }
     fn cancel_invoice(&mut self,a:ExactInvoice)->Result<Value>{
         let mut i=self.invoice(&a.id)?;ensure(i.hash==a.expected_hash,"INVOICE_HASH_MISMATCH")?;
         let buy=self.ctx.predecessor==i.spec.buyer;ensure(buy || self.ctx.predecessor==i.spec.seller,"INVOICE_PARTY_REQUIRED")?;self.authority(&self.ctx.predecessor,Some(&i.spec),buy)?;
+        ensure(self.s.get(&key("purchase-order",&i.charge_id)).is_none(),"FUNDED_GROUP_MUST_CLEAR_TOGETHER")?;
         if i.status=="CANCELLED"{return value(&i)}
         ensure(matches!(i.status.as_str(),"PROPOSED"|"ACCEPTED"),"INVOICE_ALREADY_COMMITTED")?;
         if buy{i.buyer_cancelled=true}else{i.seller_cancelled=true}
@@ -200,14 +246,17 @@ impl<'a,S:Store> Vault<'a,S>{
         ensure(input.positions.iter().any(|p|p.account_id==self.ctx.predecessor) || self.ctx.predecessor==self.c.coordinator_id,"ROUND_PARTICIPANT_REQUIRED")?;
         if self.ctx.predecessor!=self.c.coordinator_id {self.authority(&self.ctx.predecessor,None,false)?;}else{ensure(self.ctx.signer==self.ctx.predecessor && self.ctx.attached==0,"DIRECT_COORDINATOR_REQUIRED")?;}
         let h=input.hash(&self.c.network,&self.c.vault)?;
+        ensure(self.s.get(&key("funding-group",&input.id)).is_none() && self.s.get(&key("private-request",&input.id)).is_none(),"REQUEST_ID_CONFLICT")?;
         if let Some(r)=self.s.read::<Round>(&key("round",&input.id))?{ensure(r.hash==h,"REQUEST_ID_CONFLICT")?;return value(&r)}
         self.validate_deadline(a.deadline_ms)?;
         for i in &invoices{ensure(i.status=="ACCEPTED" && i.spec.ready_at_ms<=self.ctx.now_ms,"INVOICE_NOT_ELIGIBLE")?;}
+        for i in &invoices{ensure(self.s.get(&key("purchase-order",&i.charge_id)).is_none(),"FUNDED_GROUP_MUST_CLEAR_TOGETHER")?;}
+        if self.c.workflow_revision>=2{let proposer=self.ctx.predecessor.clone();self.sponsored_record(&proposer)?;}
         let proposer=self.ctx.predecessor.clone();self.add_proposal(&proposer)?;
         let r=Round{input,hash:h,proposer,status:"COLLECTING".into(),approvals:vec![],gross_invoice_volume:Some(plan.gross_invoice_volume),net_settlement_volume:plan.net_settlement_volume,created_at_ms:self.ctx.now_ms,ready_at_ms:None,settled_at_ms:None,sequence:self.c.rounds,reason:None};
         self.index_round(&r)?;value(&r)
     }
-    fn index_round(&mut self,r:&Round)->Result<()> {self.s.write(&format!("round-index:{}",self.c.rounds),&r.input.id)?;self.c.rounds+=1;self.save_round(r)?;for p in &r.input.positions{self.activity(&p.account_id,"round-proposed",&r.input.id,None)?;}Ok(())}
+    fn index_round(&mut self,r:&Round)->Result<()> {ensure(self.s.get(&key("round",&r.input.id)).is_none(),"REQUEST_ID_CONFLICT")?;self.s.write(&format!("round-index:{}",self.c.rounds),&r.input.id)?;self.c.rounds+=1;self.save_round(r)?;let funded=self.s.get(&key("funding-group",&r.input.id)).is_some() || self.s.get(&key("round-funding-group",&r.input.id)).is_some();if !funded{for p in &r.input.positions{self.activity(&p.account_id,"round-proposed",&r.input.id,None)?;}}Ok(())}
     fn eligible(&self,r:&Round)->Result<bool>{
         for (id,h) in r.input.invoice_ids.iter().zip(&r.input.invoice_hashes){
             if r.input.private {let i=self.s.read::<PrivateInvoice>(&key("private-invoice",id))?.ok_or("PRIVATE_INVOICE_NOT_FOUND")?;if i.status!="ACCEPTED" || i.charge.commitment!=*h{return Ok(false)}}
@@ -280,6 +329,8 @@ impl<'a,S:Store> Vault<'a,S>{
         }
         let mut w=self.wallet(&r.proposer)?;w.active_proposals=w.active_proposals.checked_sub(1).ok_or("PROPOSAL_COUNT_CORRUPT")?;self.save_wallet(&w)?;
         r.status="SETTLED".into();r.settled_at_ms=Some(self.ctx.now_ms);self.c.settled_rounds+=1;self.save_round(&r)?;self.recovery=true;
+        let group_id=self.s.read::<String>(&key("round-funding-group",&r.input.id))?.unwrap_or_else(||r.input.id.clone());
+        if let Some(mut g)=self.s.read::<FundingGroup>(&key("funding-group",&group_id))?{ensure(g.status=="READY" && g.round_id.as_deref()==Some(&r.input.id),"PURCHASE_GROUP_CLAIM_INVARIANT")?;g.status="SETTLED".into();self.save_funding_group(&g)?;}
         // Activity is compact and separate from the settlement calculation.
         for p in &r.input.positions{let approval=r.approvals.iter().find(|a|a.account_id==p.account_id).ok_or("APPROVAL_MISSING")?;self.finish_activity(&p.account_id,approval.activity_sequence,"round-settled",&r.input.id,Some(Amount(p.value()?.unsigned_abs())))?;}value(&r)
     }
@@ -334,23 +385,39 @@ impl<'a,S:Store> Vault<'a,S>{
             ensure(previous.purchase_id==a.purchase_id && previous.terms_version==a.terms_version && previous.seller==a.seller && previous.order_commitment==a.order_commitment,"REQUEST_ID_CONFLICT")?;
             return value(&previous)
         }
-        ensure(self.s.get(&key("charge",&charge_id)).is_none(),"PURCHASE_ALREADY_INVOICED")?;
-        self.charge_budget(&buyer,&mut permission,policy.max_invoice.0)?;
-        let authorization=PrivatePurchaseAuthorization{charge_id:charge_id.clone(),purchase_id:a.purchase_id,terms_version:a.terms_version,buyer:buyer.clone(),seller:a.seller,order_commitment:a.order_commitment,policy_epoch:permission.epoch,budget_charge:permission.budget_charge,status:"AUTHORIZED".into(),buyer_cancelled:false,seller_cancelled:false};
+        let (expires_at_ms,funding_group_id)=if self.c.workflow_revision>=2{
+            let order:PurchaseAuthorization=self.s.read(&key("purchase-order",&charge_id))?.ok_or("BUYER_FUNDED_ORDER_REQUIRED")?;
+            let g=self.funding_group(&order.group_id)?;
+            ensure(g.status=="FUNDED" && g.input.private && self.ctx.now_ms<g.input.deadline_ms && order.status=="AUTHORIZED","PURCHASE_GROUP_NOT_DELIVERABLE")?;
+            ensure(order.order.buyer==buyer && order.order.seller==a.seller && order.order.order_commitment==a.order_commitment && order.authority.epoch==permission.epoch,"PRIVATE_ORDER_COMMITMENT_MISMATCH")?;
+            permission.budget_charge=order.authority.budget_charge;(g.input.deadline_ms,Some(order.group_id))
+        }else{
+            ensure(self.s.get(&key("charge",&charge_id)).is_none(),"PURCHASE_ALREADY_INVOICED")?;
+            self.charge_budget(&buyer,&mut permission,policy.max_invoice.0)?;
+            let deadline=if a.deadline_ms==0{self.ctx.now_ms+600_000}else{a.deadline_ms};self.validate_deadline(deadline)?;(deadline,None)
+        };
+        let authorization=PrivatePurchaseAuthorization{charge_id:charge_id.clone(),purchase_id:a.purchase_id,terms_version:a.terms_version,buyer:buyer.clone(),seller:a.seller,order_commitment:a.order_commitment,policy_epoch:permission.epoch,budget_charge:permission.budget_charge,status:"AUTHORIZED".into(),buyer_cancelled:false,seller_cancelled:false,expires_at_ms,funding_group_id};
         self.s.write(&key("private-purchase",&charge_id),&authorization)?;
-        self.s.write(&key("charge",&charge_id),&json!({"mode":"private-reserved","id":charge_id}))?;
-        self.activity(&buyer,"private-purchase-authorized",&charge_id,None)?;value(&authorization)
+        if self.c.workflow_revision<2{self.s.write(&key("charge",&charge_id),&json!({"mode":"private-reserved","id":charge_id}))?;}
+        if self.c.workflow_revision>=2{self.finish_activity(&buyer,self.order_activity_sequence(&charge_id,&buyer)?,"private-purchase-authorized",&charge_id,None)?;}else{self.activity(&buyer,"private-purchase-authorized",&charge_id,None)?;}value(&authorization)
     }
     fn cancel_pending_private_purchase(&mut self,a:ExactInvoice)->Result<Value>{
         valid_hash(&a.id)?;valid_hash(&a.expected_hash)?;
         let mut order=self.s.read::<PrivatePurchaseAuthorization>(&key("private-purchase",&a.id))?.ok_or("PRIVATE_PURCHASE_NOT_AUTHORIZED")?;
         ensure(order.order_commitment==a.expected_hash,"PRIVATE_ORDER_COMMITMENT_MISMATCH")?;
         let caller=self.ctx.predecessor.clone();let buyer=caller==order.buyer;
-        ensure(buyer || caller==order.seller,"INVOICE_PARTY_REQUIRED")?;self.authority(&caller,None,buyer)?;
+        let expired=self.ctx.now_ms>=order.expires_at_ms;
+        if !expired{ensure(buyer || caller==order.seller,"INVOICE_PARTY_REQUIRED")?;self.authority(&caller,None,buyer)?;}
         if order.status=="CANCELLED"{return value(&order)}
+        if let Some(group_id)=&order.funding_group_id{
+            if expired{self.expire_purchase_group(Id{id:group_id.clone()})?;return value(&self.s.read::<PrivatePurchaseAuthorization>(&key("private-purchase",&a.id))?.ok_or("PRIVATE_PURCHASE_NOT_AUTHORIZED")?)}
+            ensure(order.status=="AUTHORIZED","PRIVATE_PURCHASE_ALREADY_FINALIZED")?;
+            if buyer{order.buyer_cancelled=true}else{order.seller_cancelled=true}
+            self.s.write(&key("private-purchase",&a.id),&order)?;return value(&order)
+        }
         ensure(order.status=="AUTHORIZED" && self.s.get(&key("private-invoice",&a.id)).is_none(),"PRIVATE_PURCHASE_ALREADY_FINALIZED")?;
         if buyer{order.buyer_cancelled=true}else{order.seller_cancelled=true}
-        if order.buyer_cancelled && order.seller_cancelled{
+        if expired || order.buyer_cancelled && order.seller_cancelled{
             let budget_key=format!("budget:{}:{}",order.buyer,order.policy_epoch);
             let spent=self.budget_spent(&order.buyer,order.policy_epoch)?;
             self.s.write(&budget_key,&Amount(sub(spent.0,order.budget_charge.0)?))?;
@@ -371,7 +438,7 @@ impl<'a,S:Store> Vault<'a,S>{
         let mut ids=std::collections::BTreeSet::new();let mut prior_charges=vec![];
         for envelope in &a.encrypted_invoices{envelope.validate()?;ensure(ids.insert(envelope.nullifier.clone()),"DUPLICATE_PRIVATE_CHARGE")?;
             if let Some(i)=self.s.read::<PrivateInvoice>(&key("private-invoice",&envelope.nullifier))?{ensure(i.status=="ACCEPTED" && i.charge.commitment==envelope.commitment,"PRIVATE_CHARGE_ALREADY_COMMITTED")?;prior_charges.push(i.charge);}
-            else{let auth=self.s.read::<PrivatePurchaseAuthorization>(&key("private-purchase",&envelope.nullifier))?.ok_or("PRIVATE_PURCHASE_NOT_AUTHORIZED")?;ensure(auth.status=="AUTHORIZED","PRIVATE_PURCHASE_ALREADY_FINALIZED")?;}
+                else{let auth=self.s.read::<PrivatePurchaseAuthorization>(&key("private-purchase",&envelope.nullifier))?.ok_or("PRIVATE_PURCHASE_NOT_AUTHORIZED")?;ensure(auth.status=="AUTHORIZED" && (auth.expires_at_ms==0 || self.ctx.now_ms<auth.expires_at_ms),"PRIVATE_PURCHASE_ALREADY_FINALIZED")?;}
         }prior_charges.sort_by(|a,b|a.nullifier.cmp(&b.nullifier));
         let mut invoice_commitments=a.encrypted_invoices.iter().map(|e|(e.nullifier.clone(),e.commitment.clone())).collect::<Vec<_>>();invoice_commitments.sort();
         let mut hashes=invoice_commitments.iter().map(|(_,h)|h.as_str()).collect::<Vec<_>>();hashes.sort();
@@ -388,10 +455,21 @@ impl<'a,S:Store> Vault<'a,S>{
                     && signers.insert(&signature.account_id) && signature.signature.len()==88,"PRIVATE_DISCLOSURE_SIGNATURE_INVALID")?;
             }
         }
-        if let Some(r)=self.s.read::<PrivateRequest>(&key("private-request",&a.id))?{ensure(r.input_commitment==a.input_commitment && r.deadline_ms==a.deadline_ms && r.profile==a.profile && r.invoice_commitments==invoice_commitments && r.verification_only==a.verification_only && r.policies.iter().map(|p|&p.account_id).eq(members.iter()),"REQUEST_ID_CONFLICT")?;return value(&r)}
-        ensure(self.s.get(&key("round",&a.id)).is_none(),"REQUEST_ID_CONFLICT")?;self.validate_deadline(a.deadline_ms)?;
-        let requester=self.ctx.predecessor.clone();self.add_proposal(&requester)?;
-        let r=PrivateRequest{id:a.id,requester,input_commitment:a.input_commitment,profile:a.profile,deadline_ms:a.deadline_ms,worker_hash:worker.hash.clone(),policies,prior_charges,invoice_commitments,verification_only:a.verification_only,status:"PROCESSING".into()};
+        if let Some(r)=self.s.read::<PrivateRequest>(&key("private-request",&a.id))?{ensure(r.input_commitment==a.input_commitment && r.deadline_ms==a.deadline_ms && r.profile==a.profile && r.invoice_commitments==invoice_commitments && r.verification_only==a.verification_only && r.funding_group_id==a.funding_group_id && r.policies.iter().map(|p|&p.account_id).eq(members.iter()),"REQUEST_ID_CONFLICT")?;return value(&r)}
+        ensure(self.s.get(&key("round",&a.id)).is_none() && self.s.get(&key("funding-group",&a.id)).is_none(),"REQUEST_ID_CONFLICT")?;self.validate_deadline(a.deadline_ms)?;
+        let requester=self.ctx.predecessor.clone();
+        if let Some(group_id)=&a.funding_group_id{
+            let g=self.funding_group(group_id)?;ensure(!a.verification_only && g.status=="FUNDED" && g.input.private && a.deadline_ms<=g.input.deadline_ms,"PURCHASE_GROUP_NOT_DELIVERABLE")?;
+            let mut expected_members=g.input.positions.iter().map(|p|p.account_id.clone()).collect::<Vec<_>>();expected_members.sort();
+            ensure(expected_members==members,"PURCHASE_GROUP_MEMBER_MISMATCH")?;
+            let mut charges=g.input.orders.iter().map(|o|o.charge_id(&self.c.network,&self.c.vault)).collect::<Vec<_>>();charges.sort();
+            ensure(charges==invoice_commitments.iter().map(|(id,_)|id.clone()).collect::<Vec<_>>(),"FUNDED_GROUP_MUST_CLEAR_TOGETHER")?;
+        }else{
+            if self.c.workflow_revision>=2 && !a.verification_only{for envelope in &a.encrypted_invoices{let auth=self.s.read::<PrivatePurchaseAuthorization>(&key("private-purchase",&envelope.nullifier))?.ok_or("PRIVATE_PURCHASE_NOT_AUTHORIZED")?;ensure(auth.funding_group_id.is_none(),"FUNDED_GROUP_MUST_CLEAR_TOGETHER")?;}}
+            if self.c.workflow_revision>=2{self.sponsored_record(&requester)?;}
+            self.add_proposal(&requester)?;
+        }
+        let r=PrivateRequest{id:a.id,requester,input_commitment:a.input_commitment,profile:a.profile,deadline_ms:a.deadline_ms,worker_hash:worker.hash.clone(),policies,prior_charges,invoice_commitments,verification_only:a.verification_only,funding_group_id:a.funding_group_id,status:"PROCESSING".into()};
         self.s.write(&key("private-request",&r.id),&r)?;
         // Only commitments and policy snapshots go into public execution args.
         let input=json!({"protocol_version":4,"operation":if r.verification_only{"verify"}else{"net"},"network":self.c.network,"vault":self.c.vault,"token":self.c.token,"request_id":r.id,"input_commitment":r.input_commitment,"deadline_ms":r.deadline_ms,"worker_hash":r.worker_hash,"policies":r.policies,"prior_charges":r.prior_charges,"encrypted_invoices":a.encrypted_invoices,"disclosure_signatures":a.disclosure_signatures});
@@ -400,7 +478,7 @@ impl<'a,S:Store> Vault<'a,S>{
         self.calls.push(Call{receiver:worker.outlayer_account,method:"request_execution".into(),args:json!({"source":{"WasmUrl":{"url":worker.url,"hash":worker.hash,"build_target":"wasm32-wasip2"}},"input_data":input.to_string(),"resource_limits":{"max_instructions":1_000_000_000u64,"max_memory_mb":128,"max_execution_seconds":45},"response_format":"Text","secrets_ref":{"profile":r.profile,"account_id":self.c.vault},"payer_account_id":self.c.vault}),deposit:self.ctx.attached.to_string(),gas:100*TGAS,callback:Some(Box::new(cb))});value(&r)
     }
     fn private_fail(&mut self,r:&mut PrivateRequest,status:&str)->Result<Value>{
-        if r.status=="PROCESSING"{let mut w=self.wallet(&r.requester)?;w.active_proposals=w.active_proposals.checked_sub(1).ok_or("PROPOSAL_COUNT_CORRUPT")?;self.save_wallet(&w)?;r.status=status.into();self.s.write(&key("private-request",&r.id),r)?;}
+        if r.status=="PROCESSING"{if r.funding_group_id.is_none(){let mut w=self.wallet(&r.requester)?;w.active_proposals=w.active_proposals.checked_sub(1).ok_or("PROPOSAL_COUNT_CORRUPT")?;self.save_wallet(&w)?;}r.status=status.into();self.s.write(&key("private-request",&r.id),r)?;}
         self.recovery=true;value(r)
     }
     fn private_callback(&mut self,a:Id)->Result<Value>{
@@ -432,7 +510,7 @@ impl<'a,S:Store> Vault<'a,S>{
             else{
                 let snap=req.policies.iter().find(|s|s.account_id==ch.buyer && s.policy.epoch==ch.policy_epoch).ok_or("PRIVATE_CHARGE_OWNER_MISMATCH")?;
                 let mut auth=self.s.read::<PrivatePurchaseAuthorization>(&key("private-purchase",&ch.nullifier))?.ok_or("PRIVATE_PURCHASE_NOT_AUTHORIZED")?;
-                ensure(auth.buyer==ch.buyer && auth.policy_epoch==ch.policy_epoch && auth.status=="AUTHORIZED" && auth.budget_charge==snap.policy.max_invoice,"PRIVATE_PURCHASE_AUTHORIZATION_MISMATCH")?;
+                ensure(auth.buyer==ch.buyer && auth.policy_epoch==ch.policy_epoch && auth.status=="AUTHORIZED" && auth.budget_charge==snap.policy.max_invoice && (auth.expires_at_ms==0 || self.ctx.now_ms<auth.expires_at_ms),"PRIVATE_PURCHASE_AUTHORIZATION_MISMATCH")?;
                 // Charge the conservative cap before service delivery, not at
                 // clearing. The same pending permission cannot finance another
                 // private purchase, and finalization does not charge it twice.
@@ -447,7 +525,18 @@ impl<'a,S:Store> Vault<'a,S>{
         }
         let input=RoundInput{id:req.id.clone(),invoice_ids:charges.iter().map(|c|c.nullifier.clone()).collect(),invoice_hashes:charges.iter().map(|c|c.commitment.clone()).collect(),positions:ps,deadline_ms:req.deadline_ms,private:true,input_commitment:req.input_commitment.clone(),worker_hash:req.worker_hash.clone()};
         let hash=input.hash(&self.c.network,&self.c.vault)?;
-        let round=Round{input,hash,proposer:req.requester.clone(),status:"COLLECTING".into(),approvals:vec![],gross_invoice_volume:None,net_settlement_volume:Amount(volume),created_at_ms:self.ctx.now_ms,ready_at_ms:None,settled_at_ms:None,sequence:self.c.rounds,reason:None};
+        let funding=if let Some(id)=&req.funding_group_id{Some(self.funding_group(id)?)}else{None};
+        if let Some(g)=&funding{
+            ensure(g.status=="FUNDED" && self.ctx.now_ms<g.input.deadline_ms,"PURCHASE_GROUP_NOT_DELIVERABLE")?;
+            let mut expected=g.input.positions.clone();expected.sort_by(|a,b|a.account_id.cmp(&b.account_id));
+            ensure(expected==input.positions,"PURCHASE_GROUP_NET_MISMATCH")?;
+        }
+        let round=Round{input,hash,proposer:funding.as_ref().map(|g|g.proposer.clone()).unwrap_or_else(||req.requester.clone()),status:if funding.is_some(){"READY"}else{"COLLECTING"}.into(),approvals:funding.as_ref().map(|g|g.approvals.clone()).unwrap_or_default(),gross_invoice_volume:None,net_settlement_volume:Amount(volume),created_at_ms:self.ctx.now_ms,ready_at_ms:funding.as_ref().map(|_|self.ctx.now_ms),settled_at_ms:None,sequence:self.c.rounds,reason:None};
+        if let Some(mut g)=funding{
+            for id in &round.input.invoice_ids{let mut i=self.s.read::<PrivateInvoice>(&key("private-invoice",id))?.ok_or("PRIVATE_INVOICE_NOT_FOUND")?;i.status="READY".into();i.round_id=Some(round.input.id.clone());self.s.write(&key("private-invoice",id),&i)?;}
+            g.status="READY".into();g.round_id=Some(round.input.id.clone());self.save_funding_group(&g)?;
+            self.s.write(&key("round-funding-group",&round.input.id),&g.input.id)?;
+        }
         self.index_round(&round)?;req.status="VERIFIED".into();self.s.write(&key("private-request",&req.id),&req)?;value(&round)
     }
     fn expire_private(&mut self,a:Id)->Result<Value>{let mut r=self.s.read::<PrivateRequest>(&key("private-request",&a.id))?.ok_or("PRIVATE_REQUEST_NOT_FOUND")?;ensure(self.ctx.now_ms>=r.deadline_ms,"PRIVATE_REQUEST_NOT_EXPIRED")?;self.private_fail(&mut r,"EXPIRED")}
@@ -476,7 +565,7 @@ impl<'a,S:Store> Vault<'a,S>{
         if let Some(existing)=self.s.read::<PrivateEncryptionKey>("private-encryption-key")?{ensure(existing.public_key==k.public_key,"PRIVATE_KEY_CHANGED")?;return value(&existing)}
         self.s.write("private-encryption-key",&k)?;value(&k)
     }
-    fn balance_view(&self,id:&str)->Result<Value>{let w=self.wallet(id)?;let p=self.s.read::<Policy>(&key("policy",id))?;let spent=if let Some(p)=&p{self.budget_spent(id,p.epoch)?}else{Amount(0)};Ok(json!({"account_id":id,"name":w.name,"balance":w.balance,"reserved":w.reserved,"available":Amount(sub(w.balance.0,w.reserved.0)?),"pending_withdrawals":w.pending_withdrawals,"policy":p,"gross_purchase_budget_used":spent,"active_proposals":w.active_proposals,"active_authorizations":w.active_authorizations}))}
+    fn balance_view(&self,id:&str)->Result<Value>{let w=self.wallet(id)?;let p=self.s.read::<Policy>(&key("policy",id))?;let spent=if let Some(p)=&p{self.budget_spent(id,p.epoch)?}else{Amount(0)};Ok(json!({"account_id":id,"name":w.name,"balance":w.balance,"reserved":w.reserved,"available":Amount(sub(w.balance.0,w.reserved.0)?),"pending_withdrawals":w.pending_withdrawals,"policy":p,"gross_purchase_budget_used":spent,"active_proposals":w.active_proposals,"active_authorizations":w.active_authorizations,"activity_count":w.activity_count,"sponsored_records":w.sponsored_records}))}
     fn list(&self,a:ListArgs,kind:&str)->Result<Value>{
         ensure((1..=100).contains(&a.limit),"INVALID_PAGE_SIZE")?;
         let (count,prefix)=match kind{
@@ -492,8 +581,10 @@ impl<'a,S:Store> Vault<'a,S>{
         }Ok(json!({"items":items,"next_cursor":if end<count{Some(end)}else{None},"total":count}))
     }
     fn dispatch(&mut self,method:&str,input:Value)->Result<Value>{match method{
-        "register_account"=>self.register(args(input)?),"set_agent_policy"=>self.set_policy(args(input)?),"revoke_agent"=>{ensure(input==json!({}),"INVALID_ARGUMENTS")?;self.revoke()},
+        "register_account"=>self.register(args(input)?),"authorize_account_registration"=>self.authorize_registration(args(input)?),"set_agent_policy"=>self.set_policy(args(input)?),"revoke_agent"=>{ensure(input==json!({}),"INVALID_ARGUMENTS")?;self.revoke()},
         "ft_on_transfer"=>self.deposit(args(input)?),"propose_invoice"=>self.propose_invoice(args(input)?),"accept_invoice"=>self.accept_invoice(args(input)?),"cancel_invoice_by_agreement"=>self.cancel_invoice(args(input)?),
+        "propose_purchase_group"=>self.propose_purchase_group(args(input)?),"authorize_purchase_group"=>self.authorize_purchase_group(args(input)?),"expire_purchase_group"=>self.expire_purchase_group(args(input)?),
+        "get_purchase_group"=>{let a:Id=args(input)?;value(&self.funding_group(&a.id)?)},"get_purchase_order"=>{let a:Id=args(input)?;value(&self.s.read::<PurchaseAuthorization>(&key("purchase-order",&a.id))?)},
         "propose_round"=>self.propose_round(args(input)?),"authorize_round"=>self.authorize_round(args(input)?),"cancel_round_authorization"=>self.cancel_round(args(input)?),"expire_round"=>self.expire(args(input)?,false),"release_stale_round"=>self.expire(args(input)?,true),"settle_round"=>self.settle(args(input)?),
         "request_withdrawal"=>self.withdraw(args(input)?),"request_recovery_withdrawal"=>self.recovery_withdraw(args(input)?),"withdrawal_callback"=>self.withdrawal_callback(args(input)?),
         "authorize_private_purchase"=>self.authorize_private_purchase(args(input)?),"cancel_pending_private_purchase"=>self.cancel_pending_private_purchase(args(input)?),"request_private_round"=>self.private_request(args(input)?),"verified_private_round_callback"=>self.private_callback(args(input)?),"expire_private_request"=>self.expire_private(args(input)?),
@@ -522,9 +613,9 @@ pub fn execute<S:Store>(store:&mut S,ctx:&Context,method:&str,input:Value)->Resu
         ensure(ctx.predecessor==ctx.current && ctx.signer==ctx.current,"SELF_INITIALIZATION_ONLY")?;
         valid_account(&ctx.current)?;valid_account(&a.token)?;valid_account(&a.owner_id)?;valid_account(&a.coordinator_id)?;
         ensure(matches!(a.network.as_str(),"testnet"|"mainnet"),"INVALID_NETWORK")?;
-        if a.network=="testnet"{ensure(a.token.ends_with(".testnet") && ctx.current.ends_with(".testnet"),"NETWORK_ACCOUNT_MISMATCH")?;}
-        if let Some(w)=&a.private_worker{valid_account(&w.outlayer_account)?;valid_hash(&w.hash)?;valid_id(&w.profile)?;ensure(w.url.starts_with("https://") && w.url.len()<=512,"INVALID_WORKER_REFERENCE")?;}
-        let c=Config{protocol_version:4,network:a.network,vault:ctx.current.clone(),token:a.token,decimals:6,owner_id:a.owner_id,coordinator_id:a.coordinator_id,private_worker:a.private_worker,total_balances:Amount(0),pending_withdrawals:Amount(0),tracked_token_custody:Amount(0),accounts:0,invoices:0,rounds:0,withdrawals:0,settled_rounds:0};
+        ensure((a.network=="testnet")==a.token.ends_with(".testnet") && (a.network=="testnet")==ctx.current.ends_with(".testnet"),"NETWORK_ACCOUNT_MISMATCH")?;
+        if let Some(w)=&a.private_worker{valid_account(&w.outlayer_account)?;valid_hash(&w.hash)?;valid_id(&w.profile)?;ensure(w.url.starts_with("https://") && w.url.len()<=512 && w.outlayer_account==if a.network=="testnet"{"outlayer.testnet"}else{"outlayer.near"},"INVALID_WORKER_REFERENCE")?;}
+        let c=Config{protocol_version:4,network:a.network,vault:ctx.current.clone(),token:a.token,decimals:6,owner_id:a.owner_id,coordinator_id:a.coordinator_id,private_worker:a.private_worker,total_balances:Amount(0),pending_withdrawals:Amount(0),tracked_token_custody:Amount(0),accounts:0,invoices:0,rounds:0,withdrawals:0,settled_rounds:0,workflow_revision:2};
         s.write(CONFIG,&c)?;ensure(ctx.native_free>=SAFETY_FLOOR+s.additional_bytes()*10u128.pow(19),"SPONSOR_STORAGE_HEADROOM_REQUIRED")?;s.commit();return Ok(Execution{value:value(&c)?,calls:vec![],events:vec![]})
     }
     let c=s.read(CONFIG)?.ok_or("NOT_INITIALIZED")?;
@@ -540,8 +631,8 @@ pub fn execute<S:Store>(store:&mut S,ctx:&Context,method:&str,input:Value)->Resu
 }
 
 #[cfg(target_arch="wasm32")]
-fn entry(method:&str){use ach_runtime::near;let bytes=near::read_input();if bytes.len()>32_768{near::fail("INPUT_TOO_LARGE")};let input=serde_json::from_slice(&bytes).unwrap_or_else(|_|near::fail("INVALID_JSON"));let ctx=if method.starts_with("get_") || method.starts_with("list_"){near::view_context()}else{near::context()};let mut store=near::Storage;match execute(&mut store,&ctx,method,input){Ok(result)=>{for event in &result.events{near::log(event)}for call in &result.calls{near::schedule(call,false)}near::finish(&result.value)},Err(code)=>near::fail(&code)}}
+fn entry(method:&str){use ach_runtime::near;let limit=if method=="propose_purchase_group"{64_000}else{32_768};let bytes=near::read_input_bounded(limit);let input=serde_json::from_slice(&bytes).unwrap_or_else(|_|near::fail("INVALID_JSON"));let ctx=if method.starts_with("get_") || method.starts_with("list_"){near::view_context()}else{near::context()};let mut store=near::Storage;match execute(&mut store,&ctx,method,input){Ok(result)=>{for event in &result.events{near::log(event)}for call in &result.calls{near::schedule(call,false)}near::finish(&result.value)},Err(code)=>near::fail(&code)}}
 #[cfg(target_arch="wasm32")]
 macro_rules! export {($($name:ident),+)=>{$(#[no_mangle]pub extern "C" fn $name(){entry(stringify!($name));})+}}
 #[cfg(target_arch="wasm32")]
-export!(init,register_account,set_agent_policy,revoke_agent,ft_on_transfer,propose_invoice,accept_invoice,cancel_invoice_by_agreement,propose_round,authorize_round,cancel_round_authorization,expire_round,release_stale_round,settle_round,request_withdrawal,request_recovery_withdrawal,withdrawal_callback,authorize_private_purchase,cancel_pending_private_purchase,request_private_round,verified_private_round_callback,expire_private_request,pin_private_worker,request_private_encryption_key,verified_private_key_callback,get_private_encryption_key,get_config,get_balance,get_available_balance,get_backing_status,get_invoice,get_round,get_withdrawal,get_recovery_withdrawal,get_private_request,get_private_invoice,get_private_purchase,list_invoices,list_rounds,list_accounts,list_withdrawals,list_account_activity);
+export!(init,register_account,authorize_account_registration,set_agent_policy,revoke_agent,ft_on_transfer,propose_invoice,accept_invoice,cancel_invoice_by_agreement,propose_purchase_group,authorize_purchase_group,expire_purchase_group,get_purchase_group,get_purchase_order,propose_round,authorize_round,cancel_round_authorization,expire_round,release_stale_round,settle_round,request_withdrawal,request_recovery_withdrawal,withdrawal_callback,authorize_private_purchase,cancel_pending_private_purchase,request_private_round,verified_private_round_callback,expire_private_request,pin_private_worker,request_private_encryption_key,verified_private_key_callback,get_private_encryption_key,get_config,get_balance,get_available_balance,get_backing_status,get_invoice,get_round,get_withdrawal,get_recovery_withdrawal,get_private_request,get_private_invoice,get_private_purchase,list_invoices,list_rounds,list_accounts,list_withdrawals,list_account_activity);

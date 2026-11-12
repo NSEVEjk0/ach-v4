@@ -1,0 +1,14 @@
+{
+  "kind": "historical-clearing-migration-fixture",
+  "source_revision": "97d36c20df0f1d6eae69d023e4bb925d677422cb",
+  "files": {
+    "index.ts": {
+      "original_path": "contracts/clearing/src/index.ts",
+      "sha256": "5b9c303dd5763308b1edd7c30826dcecd56d3b394d558d33d9abd186fbf99e83"
+    },
+    "netting.ts": {
+      "original_path": "contracts/clearing/src/netting.ts",
+      "sha256": "1eb9f111e3f14dcc648bbdc7e951cf7a318909d53421ec0d3695a7b959a7be2d"
+    }
+  }
+}

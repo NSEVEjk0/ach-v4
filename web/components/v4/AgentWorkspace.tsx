@@ -18,15 +18,17 @@ import History, { HistoryRows, historyTarget } from './History';
 import { AgentAvatar, EmptyState, PanelHeading, State } from './Interface';
 import useWorkspaceNavigation, { destinations, workspaceHref } from './useWorkspaceNavigation';
 import type { View, WorkspaceRoute } from './useWorkspaceNavigation';
-import { api, errorText, money, preview, shortId } from '../../lib/v4';
+import { api, errorText, money, shortId } from '../../lib/v4';
+import { clearingSelection } from '../../lib/clearing';
 import { sealBrief, openResult, verifyServiceKey } from '../../lib/privacy';
 import type { ServiceEncryptionKey } from '../../lib/privacy';
 import { buildHistory } from '../../lib/history';
 import type { HistoryEntry } from '../../lib/history';
-import type { Snapshot, Invoice, Round, Artifact } from '../../lib/v4';
+import type { Snapshot, Invoice, Round, Artifact, SessionEvent, EventPage } from '../../lib/v4';
 
 type Privacy = 'public' | 'private';
 type Operation = { id: string; payload: string };
+type TestSession = { id: string; created_at_ms: number; expires_at_ms: number; state: string; briefs_run: number };
 const icons = { overview: House, work: PanelsTopLeft, wallets: Wallet, payments: ReceiptText, clearing: ArrowLeftRight, history: HistoryIcon, settings: SlidersHorizontal };
 const requestId = () => crypto.randomUUID().replaceAll('-', '');
 const at = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -75,6 +77,13 @@ export default function AgentWorkspace() {
   const [mobileMenu, setMobileMenu] = useState(false);
   const [paymentFilter, setPaymentFilter] = useState('all');
   const [paymentQuery, setPaymentQuery] = useState('');
+  const [clearingGroup, setClearingGroup] = useState('');
+  const [olderHistory, setOlderHistory] = useState<SessionEvent[]>([]);
+  const [olderCursor, setOlderCursor] = useState<number | null | undefined>(undefined);
+  const [testSessions, setTestSessions] = useState<TestSession[]>([]);
+  const [testSessionsError, setTestSessionsError] = useState('');
+  const [testSessionsLoading, setTestSessionsLoading] = useState(false);
+  const [workspaceChanging, setWorkspaceChanging] = useState(false);
 
   const syncing = useRef(false);
   const lastSession = useRef('');
@@ -88,22 +97,39 @@ export default function AgentWorkspace() {
   const clearOp = useRef<Operation | null>(null);
   const withdrawOp = useRef<Operation | null>(null);
   const depositOp = useRef<Operation | null>(null);
+  const enteredClearing = useRef(false);
+  const workspaceGeneration = useRef(0);
+  const switchingWorkspace = useRef(false);
+  const expectedWorkspace = useRef('');
+  const actionPending = useRef(false);
 
   const refresh = useCallback(async () => {
-    if (syncing.current) return;
+    if (syncing.current || switchingWorkspace.current) return;
     syncing.current = true;
+    let generation = workspaceGeneration.current;
     try {
       const next = await api<Snapshot>('snapshot');
+      if (generation !== workspaceGeneration.current) return;
+      if (expectedWorkspace.current && next.session.id !== expectedWorkspace.current) { setSyncError('WORKSPACE_CONFIRMATION_PENDING'); return; }
+      expectedWorkspace.current = '';
       setData(next);
+      setWorkspaceChanging(false);
       setSyncError('');
       if (lastSession.current !== next.session.id) {
+        generation = ++workspaceGeneration.current;
         lastSession.current = next.session.id;
         setSelected([]);
         setExcludedBills([]);
         knownParticipants.current = new Set();
         resultsRef.current = {};
         setPrivateResults({});
+        setPrivateError('');
+        enteredClearing.current = false;
+        setOlderHistory([]); setOlderCursor(undefined); setClearingGroup('');
+        runOp.current = null; clearOp.current = null; withdrawOp.current = null; depositOp.current = null;
+        setWithdrawal(''); setDeposit(''); setTestSessions([]); setTestSessionsError('');
       }
+      if (runOp.current && next.jobs.some(job => job.id === 'run-' + runOp.current!.id && (job.state === 'COMPLETE' || job.state === 'FAILED' && /^AI_(?:PLAN|PLANNER|MODEL)_/.test(job.error ?? '')))) runOp.current = null;
       const added = next.session.participants.map(participant => participant.account_id).filter(id => !knownParticipants.current.has(id));
       if (added.length) {
         setSelected(current => [...current, ...added]);
@@ -115,15 +141,24 @@ export default function AgentWorkspace() {
         try { decoded[job.id] = await openResult<Artifact>(next.deployment.network, next.deployment.vault, next.session.id, job.sealed_result); }
         catch (cause) { resultError = cause instanceof Error ? cause.message : 'PRIVATE_BROWSER_KEY_REQUIRED'; }
       }
+      if (generation !== workspaceGeneration.current) return;
       resultsRef.current = decoded;
       setPrivateResults(decoded);
       setPrivateError(resultError);
-    } catch (cause) { setSyncError(cause instanceof Error ? cause.message : 'SERVICE_UNAVAILABLE'); }
+    } catch (cause) { if (generation === workspaceGeneration.current) setSyncError(cause instanceof Error ? cause.message : 'SERVICE_UNAVAILABLE'); }
     finally { syncing.current = false; setLoading(false); }
   }, []);
 
   useEffect(() => { void refresh(); const timer = setInterval(() => void refresh(), 4000); return () => clearInterval(timer); }, [refresh]);
   useEffect(() => { headingRef.current?.focus({ preventScroll: true }); }, [view]);
+  const refreshWorkspaces = useCallback(async () => {
+    const generation = workspaceGeneration.current;
+    setTestSessionsLoading(true);
+    try { const result = await api<{ sessions: TestSession[] }>('sessions'); if (generation === workspaceGeneration.current) { setTestSessions(result.sessions); setTestSessionsError(''); } }
+    catch (cause) { if (generation === workspaceGeneration.current) setTestSessionsError(cause instanceof Error ? cause.message : 'SERVICE_UNAVAILABLE'); }
+    finally { if (generation === workspaceGeneration.current) setTestSessionsLoading(false); }
+  }, []);
+  useEffect(() => { if (data && view === 'settings' && !workspaceChanging) void refreshWorkspaces(); }, [data?.session.id, view, workspaceChanging, refreshWorkspaces]);
 
   const scope = data?.session.participants.some(participant => participant.account_id === route.agent) ? route.agent! : data?.session.participants[0]?.account_id ?? '';
   const name = (id: string) => data?.session.participants.find(participant => participant.account_id === id)?.name ?? shortId(id);
@@ -134,31 +169,27 @@ export default function AgentWorkspace() {
     const invoices = new Map<string, Invoice>();
     for (const result of Object.values(privateResults)) for (const invoice of result.bills ?? []) {
       const registered = data?.private_invoices?.find(record => record.nullifier === invoice.charge_id);
-      invoices.set(invoiceId({ ...invoice, private: true }), { ...invoice, private: true, status: registered?.status ?? 'SIGNED' });
+      invoices.set(invoiceId({ ...invoice, private: true }), { ...invoice, private: true, status: registered?.status ?? 'SIGNED', round_id: registered?.round_id ?? invoice.round_id, funding_group_id: registered?.funding_group_id ?? invoice.funding_group_id });
     }
     return [...invoices.values()];
   }, [privateResults, data?.private_invoices]);
   const ledger = [...(data?.invoices ?? []), ...privateInvoices];
-  const accepted = ledger.filter(invoice => invoice.status === 'ACCEPTED' && Boolean(invoice.private) === (sheetPrivacy === 'private'));
-  const candidates = accepted.filter(invoice => selected.includes(invoice.spec.buyer) && selected.includes(invoice.spec.seller));
-  const included = candidates.filter(invoice => !excludedBills.includes(invoiceId(invoice)));
-  const includedIds = new Set(included.map(invoiceId));
-  const plan = preview(included);
-  const fullPlan = preview(accepted);
-  const underfunded = plan.positions.filter(position => BigInt(position.net) < 0n && -BigInt(position.net) > BigInt(data?.balances.find(balance => balance.account_id === position.account_id)?.available ?? '0'));
+  const { payable, approvedGroups, activeGroup, approvedRound, accepted, candidates, included, includedIds, plan, fullPlan, underfunded, metadataIncomplete, selectionIncomplete, canClear } = clearingSelection({ ledger, rounds: data?.rounds, balances: data?.balances, selected, excludedBills, privacy: sheetPrivacy, requestedGroup: clearingGroup });
   const waiting = ledger.filter(invoice => ['ACCEPTED', 'READY'].includes(invoice.status) && invoice.spec.seller === scope).reduce((total, invoice) => total + BigInt(invoice.spec.amount), 0n).toString();
   const currentJobs = data?.jobs.filter(job => ['STARTED', 'WAITING'].includes(job.state)) ?? [];
   const completed = data?.jobs.filter(job => job.state === 'COMPLETE' && (job.result || privateResults[job.id])).at(-1);
   const artifact = completed ? completed.result ?? privateResults[completed.id] : null;
   const latestRound = [...(data?.rounds ?? [])].reverse().find(round => round.status === 'SETTLED' && round.input.private === (sheetPrivacy === 'private'));
   const waitingActions = data?.pending_actions?.filter(action => ['STARTED', 'WAITING'].includes(action.state)) ?? [];
-  const history = data ? buildHistory(data, ledger, privateResults) : [];
+  const historyEvents = data ? [...new Map([...olderHistory, ...data.events].map(event => [event.sequence, event])).values()].sort((a,b) => a.sequence-b.sequence) : [];
+  const history = data ? buildHistory({ ...data, events: historyEvents }, ledger, privateResults) : [];
+  const historyCursor = olderCursor === undefined ? data?.event_page?.next_cursor ?? null : olderCursor;
   const drawer = route.item === 'invoice' || route.item === 'work';
   const detailInvoice = route.item === 'invoice' ? ledger.find(invoice => invoiceId(invoice) === route.id) : undefined;
   const opaqueInvoice = route.item === 'invoice' && !detailInvoice ? data?.private_invoices?.find(invoice => invoice.nullifier === route.id) : undefined;
   const detailJob = route.item === 'work' ? data?.jobs.find(job => job.id === route.id) : undefined;
   const detailArtifact = detailJob ? detailJob.result ?? privateResults[detailJob.id] : undefined;
-  const stale = Boolean(syncError);
+  const stale = Boolean(syncError) || workspaceChanging || data?.financial_data_available === false;
 
   const go = (next: View) => { setMobileMenu(false); navigate({ view: next, agent: scope || undefined }); };
   const closeDrawer = useCallback(() => back({ view, agent: scope || undefined, round: route.round }), [back, view, scope, route.round]);
@@ -201,10 +232,40 @@ export default function AgentWorkspace() {
   }, [route.round, drawer, data?.rounds.length]);
 
   async function action(label: string, work: () => Promise<void>) {
+    if (actionPending.current) return;
+    actionPending.current = true;
     setPending(label); setError(''); setNotice('');
     try { await work(); await refresh(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'SERVICE_UNAVAILABLE'); await refresh(); }
-    finally { setPending(''); }
+    finally { actionPending.current = false; setPending(''); }
+  }
+  useEffect(() => {
+    if (view !== 'clearing') { enteredClearing.current = false; return; }
+    if (!data || data.session.state !== 'READY' || enteredClearing.current || pending || workspaceChanging) return;
+    enteredClearing.current = true;
+    if (data.session.clearing_policy?.mode === 'automatic') void action('clearing-policy', async () => { await api('clearing-policy', { mode: 'manual' }); });
+  }, [view, data?.session.id, data?.session.state, pending, workspaceChanging]);
+  async function loadOlderHistory() {
+    if (historyCursor === null) return;
+    await action('history', async () => {
+      const page = await api<EventPage>('history?before=' + historyCursor);
+      setOlderHistory(current => [...new Map([...page.items, ...current].map(event => [event.sequence, event])).values()]);
+      setOlderCursor(page.next_cursor);
+    });
+  }
+  async function changeWorkspace(id?: string) {
+    await action('workspace', async () => {
+      switchingWorkspace.current = true; workspaceGeneration.current++; setWorkspaceChanging(true);
+      expectedWorkspace.current = ''; setTestSessionsLoading(false);
+      try {
+        const opened = await api<{ session: { id: string } }>(id ? 'session-switch' : 'session-new', id ? { session_id: id } : {});
+        if (!opened.session?.id) throw new Error('SESSION_RESPONSE_INVALID');
+        expectedWorkspace.current = opened.session.id;
+        navigate({ view: id ? 'overview' : 'work' });
+        setNotice(id ? 'Your earlier test workspace is open.' : 'Fresh test wallets are being prepared. Your earlier work remains in Settings.');
+      } catch (cause) { expectedWorkspace.current = ''; throw cause; }
+      finally { switchingWorkspace.current = false; }
+    });
   }
   function operation(ref: MutableRefObject<Operation | null>, payload: string) {
     if (ref.current?.payload !== payload) ref.current = { id: requestId(), payload };
@@ -272,27 +333,30 @@ export default function AgentWorkspace() {
     const available = all ? data!.balances.reduce((total, balance) => total + BigInt(balance.available), 0n).toString() : wallet?.available;
     const reserved = all ? data!.balances.reduce((total, balance) => total + BigInt(balance.reserved), 0n).toString() : wallet?.reserved;
     const outstanding = all ? ledger.filter(invoice => ['ACCEPTED', 'READY'].includes(invoice.status)).reduce((total, invoice) => total + BigInt(invoice.spec.amount), 0n).toString() : waiting;
-    return <div className="wallet-overview"><div className="wallet-summary-label"><span>{all ? 'Across your agent wallets' : name(scope) + '’s wallet'}</span><span className="tag">Test money · tUSDC</span></div><section className="wallet-summary" aria-label={all ? 'Money across your agent wallets' : `Money in ${name(scope)}’s wallet`}><div className="available-summary"><span>Available</span><strong>{available ? money(available) : '—'}<small> tUSDC</small></strong><p>Confirmed and ready to use</p></div><div><span>Reserved for clearing</span><strong>{reserved ? money(reserved) : '—'}<small> tUSDC</small></strong><p>Committed to approved rounds</p></div><div><span>{all ? 'Bills awaiting clearing' : 'Awaiting payment'}</span><strong>{money(outstanding)}<small> tUSDC</small></strong><p>Agreed bills awaiting settlement</p></div></section></div>;
+    return <div className="wallet-overview"><div className="wallet-summary-label"><span>{all ? 'Across your agent wallets' : name(scope) + '’s wallet'}</span><span className="tag">Test money · tUSDC</span></div><section className="wallet-summary" aria-label={all ? 'Money across your agent wallets' : `Money in ${name(scope)}’s wallet`}><div className="available-summary"><span>Available</span><strong>{available ? money(available) : '—'}<small> tUSDC</small></strong><p>Confirmed and ready to use</p></div><div><span>Reserved for clearing</span><strong>{reserved ? money(reserved) : '—'}<small> tUSDC</small></strong><p>Committed to approved purchases</p></div><div><span>{all ? 'Bills awaiting clearing' : 'Awaiting payment'}</span><strong>{money(outstanding)}<small> tUSDC</small></strong><p>Agreed bills awaiting settlement</p></div></section></div>;
   }
 
   function clearingSheet() {
     return <section className="work-surface clearing-surface">
       <PanelHeading title="Create a clearing round" description="Choose who clears together, then review the exact result before requesting the round."><div className="segmented-control" role="group" aria-label="Clearing invoice visibility">{(['public', 'private'] as const).map(value => <button key={value} aria-pressed={sheetPrivacy === value} onClick={() => { setSheetPrivacy(value); setExcludedBills([]); clearOp.current = null; }}>{value === 'public' ? 'Public' : 'Private'}</button>)}</div></PanelHeading>
+      <div className="surface-action"><p><span>Clearing schedule<small>{data!.session.clearing_policy?.mode === 'manual' ? 'Manual mode is saved. Your selection stays under your control.' : 'Automatic mode clears eligible, approved groups.'}</small></span></p><div className="segmented-control" role="group" aria-label="Clearing schedule">{(['manual','automatic'] as const).map(value => <button key={value} aria-pressed={(data!.session.clearing_policy?.mode ?? 'automatic') === value} disabled={Boolean(pending) || stale} onClick={() => void action('clearing-policy', async () => { await api('clearing-policy', { mode:value }); })}>{value === 'manual' ? 'Manual' : 'Automatic'}</button>)}</div></div>
+      {approvedGroups.length > 1 && <label className="inline-filter"><span>Approved purchase group</span><select aria-label="Approved purchase group" value={activeGroup} onChange={event => { setClearingGroup(event.target.value); setExcludedBills([]); clearOp.current = null; }}>{approvedGroups.map((id,index) => <option key={id} value={id}>Purchase {index+1} · {payable.filter(invoice => invoice.round_id === id).length} bills</option>)}</select></label>}
       {sheetPrivacy === 'private' && <p className="privacy-note"><LockKeyhole size={16} />Private invoice details open in the browser that created the brief. Participants and their approved net payments remain public.</p>}
       {accepted.length ? <>
         <fieldset className="participant-selection"><legend>Agents in this clearing group</legend><div>{data!.session.participants.map(participant => <label className={selected.includes(participant.account_id) ? 'participant-selected' : undefined} key={participant.account_id}><input type="checkbox" checked={selected.includes(participant.account_id)} onChange={() => { setSelected(ids => ids.includes(participant.account_id) ? ids.filter(id => id !== participant.account_id) : [...ids, participant.account_id]); clearOp.current = null; }} /><AgentAvatar participant={participant} size="small" /><span>{participant.name}</span></label>)}</div></fieldset>
         <div className="selection-heading"><h3>Agreed bills to include</h3><span>{included.length} of {accepted.length} selected</span></div>
         <PaymentsTable invoices={candidates} name={name} onDetails={openInvoice} selected={includedIds} onSelect={id => { setExcludedBills(ids => ids.includes(id) ? ids.filter(value => value !== id) : [...ids, id]); clearOp.current = null; }} emptyTitle="Choose agents with an agreed bill between them" />
         {included.length < accepted.length && <p className="selection-notice">{accepted.length - included.length} excluded bill{accepted.length - included.length === 1 ? ' remains' : 's remain'} outstanding. This group needs <strong>{money(plan.net)} tUSDC</strong>; the full group needs {money(fullPlan.net)}. A new invoice set requires fresh approvals.</p>}
+        {selectionIncomplete && <p className="funding-error" role="status">{metadataIncomplete ? 'The complete approved group could not be confirmed. Refresh before clearing.' : approvedRound ? 'This approved purchase group clears together. Include all of its bills.' : 'This purchase group is funded and awaiting its remaining deliveries.'}</p>}
         <div className="net-sheet"><div className="net-positions"><h3>Each agent’s final amount</h3>{plan.positions.length ? plan.positions.map(position => { const net = BigInt(position.net); return <div className="net-result" key={position.account_id}><span>{name(position.account_id)}</span><strong className={net > 0n ? 'positive-text' : undefined}>{net === 0n ? 'No transfer' : <><span>{net < 0n ? 'Pays' : 'Receives'}</span> {money((net < 0n ? -net : net).toString())}<small> tUSDC</small></>}</strong></div>; }) : <p className="form-hint">Choose bills to calculate the final amounts.</p>}</div><div className="net-summary"><div><span>Gross agreed bills</span><strong>{money(plan.gross)} <small>tUSDC</small></strong></div><div className="net-funding"><span>Cash to reserve</span><strong>{money(plan.net)} <small>tUSDC</small></strong></div><div><span>Payment values offset</span><strong>{plan.reduction}%</strong></div></div></div>
         {underfunded.map(position => <p className="funding-error" role="status" key={position.account_id}>{name(position.account_id)} needs {money(position.net.slice(1))} tUSDC; {money(data!.balances.find(balance => balance.account_id === position.account_id)?.available ?? '0')} is available. Fund this wallet or choose another group.</p>)}
         {sheetPrivacy === 'private' && included.length > 6 && <p className="funding-error">A private round supports six bills. Select a smaller invoice set.</p>}
-        <div className="surface-action"><p><Check size={16} /><span>Every included agent approves these bills and its final amount.<small>Only net debtors reserve money. Agents can also clear eligible bills under their standing permissions.</small></span></p><button className="button primary" disabled={!included.length || underfunded.length > 0 || Boolean(pending) || stale || (sheetPrivacy === 'private' && (data?.private_data_available === false || included.length > 6))} onClick={() => void clear()}>{pending === 'clear' ? 'Requesting clearing…' : 'Clear selected bills'}<ArrowLeftRight size={17} /></button></div>
+        <div className="surface-action"><p><Check size={16} /><span>{approvedRound ? 'Every included agent approved these purchases and its final amount before delivery.' : 'Every included agent approves these bills and its final amount.'}<small>{approvedRound ? 'The net payment is already reserved. Clearing completes the approved group.' : 'Only net debtors reserve money. Agents can also clear eligible bills under their standing permissions.'}</small></span></p><button className="button primary" disabled={!canClear || Boolean(pending) || stale || (sheetPrivacy === 'private' && data?.private_data_available === false)} onClick={() => void clear()}>{pending === 'clear' ? 'Requesting clearing…' : 'Clear selected bills'}<ArrowLeftRight size={17} /></button></div>
       </> : <>
         <EmptyState title={latestRound ? 'These bills have cleared' : 'No accepted bills to clear yet'} icon={<ArrowLeftRight size={25} />}><p>{latestRound ? 'Open the completed round below to see its bills, calculation and approvals.' : 'Your agents’ accepted service payments will appear here.'}</p>{!latestRound && <button className="text-button" onClick={() => go('work')}>Create a brief <ArrowRight size={15} /></button>}</EmptyState>
         {latestRound && <div className="settlement-banner"><div><State status="SETTLED" /><h3>{money(latestRound.net_settlement_volume)} tUSDC settled {latestRound.input.invoice_ids.length} bills.</h3><p>The resulting balances are confirmed and available to use.</p></div><button className="button secondary" onClick={() => openRound(latestRound.input.id)}>See how it cleared <ArrowRight size={15} /></button></div>}
       </>}
-      {waitingActions.filter(waiting => waiting.round_id?.startsWith('private-') === (sheetPrivacy === 'private')).map(waiting => <div className="operation-waiting" role="status" key={waiting.id}><State status={waiting.state} /><p>{waiting.reason ? errorText(waiting.reason) : 'Your clearing request is being checked and submitted.'}</p></div>)}
+      {waitingActions.filter(waiting => (waiting.private ?? data?.rounds.find(round => round.input.id === waiting.round_id)?.input.private ?? waiting.round_id?.startsWith('private-') ?? false) === (sheetPrivacy === 'private')).map(waiting => <div className="operation-waiting" role="status" key={waiting.id}><State status={waiting.state} /><p>{waiting.reason ? errorText(waiting.reason) : 'Your clearing request is being checked and submitted.'}</p></div>)}
     </section>;
   }
 
@@ -316,20 +380,21 @@ export default function AgentWorkspace() {
   return <div className="workspace-root">
     <div className="desk-layout" inert={drawer}>
       <a className="skip-link" href="#workspace-content">Skip to main content</a>
-      <aside className={`desk-rail ${mobileMenu ? 'mobile-menu-open' : ''}`}><div className="rail-brand-row"><Brand /><button className="mobile-menu-button" aria-label={mobileMenu ? 'Close navigation' : 'Open navigation'} aria-expanded={mobileMenu} aria-controls="workspace-navigation" onClick={() => setMobileMenu(value => !value)}>{mobileMenu ? <X size={21} /> : <Menu size={21} />}</button></div><span className="rail-section-label">Your workspace</span><nav id="workspace-navigation" aria-label="Workspace navigation">{destinations.map(({ id, label }) => { const Icon = icons[id]; return <a key={id} href={workspaceHref({ view: id, agent: scope || undefined })} className={view === id ? 'active' : undefined} aria-current={view === id ? 'page' : undefined} onClick={event => { if (!isPlainClick(event)) return; event.preventDefault(); go(id); }}><Icon size={19} />{label}{id === 'clearing' && ledger.some(invoice => invoice.status === 'ACCEPTED') && <span className="nav-count">{ledger.filter(invoice => invoice.status === 'ACCEPTED').length}</span>}</a>; })}</nav><div className="rail-bottom"><div className="rail-session"><span className="status-dot" /><div><strong>Free test session</strong><span>NEAR testnet · ACH v4</span></div></div><Link href="/">About ACH <ArrowUpRight size={14} /></Link><Link href="/developers">Developer guide <ArrowUpRight size={14} /></Link></div></aside>
+      <aside className={`desk-rail ${mobileMenu ? 'mobile-menu-open' : ''}`}><div className="rail-brand-row"><Brand /><button className="mobile-menu-button" aria-label={mobileMenu ? 'Close navigation' : 'Open navigation'} aria-expanded={mobileMenu} aria-controls="workspace-navigation" onClick={() => setMobileMenu(value => !value)}>{mobileMenu ? <X size={21} /> : <Menu size={21} />}</button></div><span className="rail-section-label">Your workspace</span><nav id="workspace-navigation" aria-label="Workspace navigation">{destinations.map(({ id, label }) => { const Icon = icons[id]; return <a key={id} href={workspaceHref({ view: id, agent: scope || undefined })} className={view === id ? 'active' : undefined} aria-current={view === id ? 'page' : undefined} onClick={event => { if (!isPlainClick(event)) return; event.preventDefault(); go(id); }}><Icon size={19} />{label}{id === 'clearing' && ledger.some(invoice => ['ACCEPTED', 'READY'].includes(invoice.status)) && <span className="nav-count">{ledger.filter(invoice => ['ACCEPTED', 'READY'].includes(invoice.status)).length}</span>}</a>; })}</nav><div className="rail-bottom"><div className="rail-session"><span className="status-dot" /><div><strong>Free test session</strong><span>NEAR testnet · ACH v4</span></div></div><Link href="/">About ACH <ArrowUpRight size={14} /></Link><Link href="/developers">Developer guide <ArrowUpRight size={14} /></Link></div></aside>
       <main className="desk-main" id="workspace-content"><header className="desk-header"><span className="workspace-title">Autonomous Clearing House</span><div className="desk-connection"><span className={`connection ${data && syncError ? 'stale' : ''}`}><span className="status-dot" />{data && syncError ? 'Updates unavailable' : data?.last_sync_at_ms ? 'Updated ' + at(data.last_sync_at_ms) : needsSession ? 'Free demo' : 'Connecting'}</span><button className="icon-button" aria-label="Refresh confirmed state" title="Refresh balances and activity" onClick={() => void refresh()}><RefreshCw size={17} /></button></div></header>
         <div className="workspace-content"><div className="page-heading">{view !== 'overview' && <button className="back-link" onClick={() => back()}><ArrowLeft size={15} />Back</button>}<div className="page-heading-row"><div><h1 ref={headingRef} tabIndex={-1}>{destination.label}</h1><p>{destination.description}</p></div>{data?.session.participants.length && ['wallets', 'clearing', 'settings'].includes(view) ? <label className="account-picker"><span>{view === 'clearing' ? 'Acting agent' : 'Agent wallet'}</span><select id="wallet-scope" value={scope} onChange={event => navigate({ ...route, agent: event.target.value }, { keepScroll: true })}>{data.session.participants.map(participant => <option key={participant.account_id} value={participant.account_id}>{participant.name}</option>)}</select></label> : null}</div></div>
           {(error || (syncError && (!needsSession || data))) && <div className="message error-message" role="alert"><p>{errorText(error || syncError)}</p>{data && syncError && <span>Showing the last confirmed balances. Money actions will be available after updates resume.</span>}</div>}
           {notice && <div className="message success-message" role="status"><Check size={17} /><p>{notice}</p><button className="icon-button" aria-label="Dismiss message" onClick={() => setNotice('')}><X size={15} /></button></div>}
-          {!data ? <section className="first-session work-surface">{loading ? <><span className="section-kicker">Opening your workspace</span><h2>Connecting to your agents…</h2><div className="skeleton-line" /><div className="skeleton-line short" /></> : <><span className="welcome-mark"><Mark size={43} /></span><span className="section-kicker">Try ACH for free</span><h2>Your agents.<br />Their work and money.</h2><p>Start a sponsored session with three service agents. Give them a brief, download the results, and follow their payments through clearing.</p><StartSession /><span className="free-note">Test funds are provided. No wallet setup is needed.</span></>}</section> : data.session.state && data.session.state !== 'READY' ? <section className="work-surface provisioning-state"><div className="skeleton-line" /><h2>Preparing your agent wallets</h2><p>The sponsored accounts and their test funds are being confirmed. This page updates automatically.</p><State status="STARTED" /></section> : <>
+          {data && needsSession && <section className="work-surface"><PanelHeading title="Start fresh test wallets" description="Your previous session has expired. Open a sponsored workspace to keep testing." /><StartSession onStarted={id => { workspaceGeneration.current++; expectedWorkspace.current = id; setWorkspaceChanging(true); void refresh(); }} /></section>}
+          {!data ? <section className="first-session work-surface">{loading ? <><span className="section-kicker">Opening your workspace</span><h2>Connecting to your agents…</h2><div className="skeleton-line" /><div className="skeleton-line short" /></> : <><span className="welcome-mark"><Mark size={43} /></span><span className="section-kicker">Try ACH for free</span><h2>Your agents.<br />Their work and money.</h2><p>Start a sponsored session with three service agents. Give them a brief, download the results, and follow their payments through clearing.</p><StartSession /><span className="free-note">Test funds are provided. No wallet setup is needed.</span></>}</section> : data.session.state && data.session.state !== 'READY' ? <section className="work-surface provisioning-state"><div className="skeleton-line" /><h2>Preparing your agent wallets</h2><p role="status">{data.session.setup_progress?.agent ? ({research:'Research Desk',visual:'Visual Studio',audit:'Audit Desk'} as Record<string,string>)[data.session.setup_progress.agent] + ' · ' : ''}{data.session.setup_progress?.stage ?? 'Confirming your sponsored wallets'}</p><p>Wallet {Math.min(data.session.participants.length + 1, 3)} of 3. This page updates automatically.</p><State status="STARTED" /></section> : <>
             {view === 'overview' && <>
               {walletSummary(true)}
-              <div className="overview-actions"><section className="overview-work"><span className="overview-icon"><PanelsTopLeft size={23} /></span><h2>Give your agents a task</h2><p>Turn your data into a chart, a reference packet and checks. Then follow the bills created by that work.</p><button className="button primary" onClick={() => go('work')}>Create a brief <ArrowRight size={16} /></button><span className="form-hint">{Math.max(0, 2 - data.jobs.length)} sponsored briefs remaining</span></section><section className="overview-clearing"><span className="overview-icon"><ArrowLeftRight size={23} /></span><h2>{ledger.some(invoice => invoice.status === 'ACCEPTED') ? 'Payments ready to clear' : data.rounds.some(round => round.status === 'SETTLED') ? 'Your payments are clearing' : 'Follow the payments'}</h2><p>{ledger.some(invoice => invoice.status === 'ACCEPTED') ? 'Review the bills and see how much funding your chosen group needs.' : data.rounds.some(round => round.status === 'SETTLED') ? 'Open a round to see how the bills offset and where the money went.' : 'Accepted bills and their clearing rounds appear after the agents deliver work.'}</p><button className="button secondary" onClick={() => go('clearing')}>{data.rounds.length ? 'View clearing rounds' : 'Review clearing'}<ArrowRight size={16} /></button></section></div>
+              <div className="overview-actions"><section className="overview-work"><span className="overview-icon"><PanelsTopLeft size={23} /></span><h2>Give your agents a task</h2><p>Turn your data into a chart, a reference packet and checks. Then follow the bills created by that work.</p><button className="button primary" onClick={() => go('work')}>Create a brief <ArrowRight size={16} /></button><span className="form-hint">Free demo briefs. Keep testing your agents.</span></section><section className="overview-clearing"><span className="overview-icon"><ArrowLeftRight size={23} /></span><h2>{ledger.some(invoice => ['ACCEPTED', 'READY'].includes(invoice.status)) ? 'Payments ready to clear' : data.rounds.some(round => round.status === 'SETTLED') ? 'Your payments are clearing' : 'Follow the payments'}</h2><p>{ledger.some(invoice => ['ACCEPTED', 'READY'].includes(invoice.status)) ? 'Review the bills and see how much funding your chosen group needs.' : data.rounds.some(round => round.status === 'SETTLED') ? 'Open a round to see how the bills offset and where the money went.' : 'Accepted bills and their clearing rounds appear after the agents deliver work.'}</p><button className="button secondary" onClick={() => go('clearing')}>{data.rounds.length ? 'View clearing rounds' : 'Review clearing'}<ArrowRight size={16} /></button></section></div>
               <section className="work-surface agent-wallets-surface"><PanelHeading title="Your agent wallets" description="Each agent has its own balance and spending permissions."><button className="text-button" onClick={() => go('wallets')}>Manage wallets <ArrowUpRight size={15} /></button></PanelHeading><div className="agent-wallet-list">{data.session.participants.map(participant => { const balance = data.balances.find(balance => balance.account_id === participant.account_id); return <a className="agent-wallet-row" key={participant.account_id} href={workspaceHref({ view: 'wallets', agent: participant.account_id })} onClick={event => { if (!isPlainClick(event)) return; event.preventDefault(); navigate({ view: 'wallets', agent: participant.account_id }); }}><AgentAvatar participant={participant} /><span><strong>{participant.name}</strong><small>{balance?.policy?.revoked ? 'Trading revoked' : 'Trading enabled'}</small></span><span className="agent-wallet-money"><strong className="amount">{balance ? money(balance.available) : '—'} <small>tUSDC</small></strong><small>Available</small></span><ArrowUpRight size={16} /></a>; })}</div></section>
               <section className="work-surface"><PanelHeading title="Recent activity"><button className="text-button" onClick={() => go('history')}>See history <ArrowUpRight size={15} /></button></PanelHeading>{history.length ? <HistoryRows entries={history.slice(0, 5)} route={route} onOpen={openHistory} /> : <EmptyState title="Ready for your first brief"><p>Completed work, accepted bills and clearing rounds will appear here.</p></EmptyState>}</section>
             </>}
             {view === 'work' && <>
-              <WorkForm data={data} brief={brief} dataset={dataset} mode={mode} budget={budget} privacy={privacy} pending={pending} running={currentJobs.length > 0} stale={stale} onBrief={setBrief} onDataset={setDataset} onMode={setMode} onBudget={setBudget} onPrivacy={setPrivacy} onRun={() => void run()} />
+              <WorkForm data={data} brief={brief} dataset={dataset} mode={mode} budget={budget} privacy={privacy} pending={pending} running={currentJobs.length > 0} stale={stale} onBrief={setBrief} onDataset={setDataset} onMode={setMode} onBudget={setBudget} onPrivacy={setPrivacy} onRun={() => void run()} onNewWorkspace={() => void changeWorkspace()} />
               {currentJobs.map(job => <div className="message job-progress" role="status" key={job.id}><State status={job.state} /><p>{job.error ? errorText(job.error) : 'The agents are preparing deliverables and confirming the agreed service bills.'}</p></div>)}
               {data.jobs.filter(job => job.state === 'FAILED').map(job => <div className="message error-message" role="alert" key={job.id}><strong>This brief did not complete.</strong><p>{errorText(job.error ?? 'SERVICE_UNAVAILABLE')} Already accepted bills remain available to inspect.</p></div>)}
               {privateError && <div className="message" role="status"><LockKeyhole size={17} /><p>{errorText(privateError)}</p></div>}
@@ -339,8 +404,8 @@ export default function AgentWorkspace() {
             {view === 'payments' && <section className="work-surface payments-surface"><PanelHeading title="Service payments" description="Prices agreed by the buyer and provider."><span className="tag">{ledger.length + unknownPrivate.length} bill{ledger.length + unknownPrivate.length === 1 ? '' : 's'}</span></PanelHeading><div className="payment-filters"><label className="search-field"><Search size={17} /><span className="sr-only">Search payments</span><input value={paymentQuery} placeholder="Search a service or agent…" onChange={event => setPaymentQuery(event.target.value)} /></label><label className="inline-filter"><span className="sr-only">Payment status</span><select value={paymentFilter} onChange={event => setPaymentFilter(event.target.value)}><option value="all">All payments</option><option value="pending">Awaiting clearing</option><option value="settled">Settled</option><option value="private">Private invoices</option></select></label></div><PaymentsTable invoices={filteredPayments} name={name} onDetails={openInvoice} emptyTitle={ledger.length ? 'No payments match this filter' : 'No agreed service bills yet'} />{unknownPrivate.length > 0 && <div className="private-records"><h3>Encrypted invoice records</h3><p className="form-hint">The original browser can open these invoices. Their commitments and settlement states remain recorded.</p><HistoryRows entries={history.filter(entry => entry.kind === 'payment' && unknownPrivate.some(invoice => invoice.nullifier === entry.reference))} route={route} onOpen={openHistory} /></div>}</section>}
             {view === 'clearing' && <>{clearingSheet()}{roundsList()}</>}
             {view === 'wallets' && <>{walletSummary()}<WalletControls wallet={wallet} scope={scope} outside={outside} recovery={recovery} withdrawal={withdrawal} deposit={deposit} pending={pending} stale={stale} onWithdrawal={setWithdrawal} onDeposit={setDeposit} onWithdraw={all => void withdraw(all)} onRedeposit={() => void redeposit()} onRounds={() => go('clearing')} /><FundingRoutes enabled={data.intents.enabled} /></>}
-            {view === 'history' && <History entries={history} data={data} route={route} onFilter={next => navigate(next, { replace: true, keepScroll: true })} onOpen={openHistory} />}
-            {view === 'settings' && <>{walletSummary()}<Permissions wallet={wallet} data={data} pending={pending} stale={stale} onRevoke={() => void action('revoke', async () => { await api('revoke', { request_id: requestId(), account_id: scope }); setNotice('Trading authority revoked. Funded rounds can still settle and available funds can be withdrawn.'); })} /></>}
+            {view === 'history' && <History entries={history} data={data} route={route} onFilter={next => navigate(next, { replace: true, keepScroll: true })} onOpen={openHistory} hasOlder={historyCursor !== null} loadingOlder={pending === 'history'} onLoadOlder={() => void loadOlderHistory()} />}
+            {view === 'settings' && <>{walletSummary()}<Permissions wallet={wallet} data={data} pending={pending} stale={stale} onRevoke={() => void action('revoke', async () => { await api('revoke', { request_id: requestId(), account_id: scope }); setNotice('Trading authority revoked. Funded rounds can still settle and available funds can be withdrawn.'); })} /><section className="work-surface"><PanelHeading title="Your test workspaces" description="Keep trying ACH with fresh test wallets. Earlier work, payments and private results remain in their original workspace." />{testSessionsError && <div className="message error-message" role="alert"><p>Earlier workspaces could not be loaded. {errorText(testSessionsError)}</p><button className="text-button" disabled={testSessionsLoading || Boolean(pending) || stale} onClick={() => void refreshWorkspaces()}>Try again</button></div>}<div className="brief-options"><label>Open a workspace<select aria-label="Test workspace" value={data.session.id} disabled={Boolean(pending) || stale || testSessionsLoading} onChange={event => void changeWorkspace(event.target.value)}>{(testSessions.length ? testSessions : [{ id: data.session.id, briefs_run: data.jobs.length }]).map(session => <option key={session.id} value={session.id}>{shortId(session.id)} · {session.briefs_run} brief{session.briefs_run === 1 ? '' : 's'}</option>)}</select></label></div><button className="button secondary" disabled={Boolean(pending) || stale} onClick={() => void changeWorkspace()}>Start another test workspace<ArrowRight size={16} /></button></section></>}
           </>}
           <footer className="desk-footer"><span>Test funds have no monetary value. This session is sponsored.</span><Link href="/proof">Live deployment <ArrowUpRight size={13} /></Link></footer>
         </div>

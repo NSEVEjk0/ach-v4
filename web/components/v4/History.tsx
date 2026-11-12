@@ -28,9 +28,10 @@ export function HistoryRows({ entries, route, onOpen }: { entries: HistoryEntry[
   })}</div>;
 }
 
-export default function History({ entries, data, route, onFilter, onOpen }: {
+export default function History({ entries, data, route, onFilter, onOpen, hasOlder, loadingOlder, onLoadOlder }: {
   entries: HistoryEntry[]; data: Snapshot; route: WorkspaceRoute;
   onFilter: (route: WorkspaceRoute) => void; onOpen: (entry: HistoryEntry, target: HTMLElement) => void;
+  hasOlder?:boolean;loadingOlder?:boolean;onLoadOlder?:()=>void;
 }) {
   const [page, setPage] = useState(1);
   const category = ['work', 'payments', 'clearing', 'account'].includes(route.category ?? '') ? route.category! : 'all';
@@ -48,7 +49,7 @@ export default function History({ entries, data, route, onFilter, onOpen }: {
 
   return (
     <section className="work-surface history-surface">
-      <PanelHeading title="Your history" description="Recorded service and clearing activity in this session.">
+      <PanelHeading title="Your history" description="Recorded work, wallet actions and clearing in this session.">
         <a className="button secondary" href={`data:text/csv;charset=utf-8,${encodeURIComponent(historyCsv(filtered))}`} download="ach-recorded-history.csv">Export history <Download size={15} /></a>
       </PanelHeading>
       <div className="history-filters">
@@ -60,7 +61,8 @@ export default function History({ entries, data, route, onFilter, onOpen }: {
       <div className="list-summary"><span>{filtered.length} record{filtered.length === 1 ? '' : 's'}</span>{(category !== 'all' || status !== 'all' || query || party !== 'all') && <button className="text-button" onClick={() => onFilter({ view: 'history', agent: route.agent })}>Clear filters</button>}</div>
       {filtered.length ? <HistoryRows entries={filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)} route={route} onOpen={onOpen} /> : <EmptyState title={entries.length ? 'No matching activity' : 'Your history will appear here'} icon={<HistoryIcon size={25} />}><p>{entries.length ? 'Try a different type, status or search term.' : 'Run a brief to start recording work and payments.'}</p></EmptyState>}
       {pages > 1 && <div className="list-pagination"><span>Page {currentPage} of {pages}</span><div><button className="button secondary" disabled={currentPage === 1} onClick={() => setPage(value => value - 1)}>Previous</button><button className="button secondary" disabled={currentPage === pages} onClick={() => setPage(value => value + 1)}>Next</button></div></div>}
-      {data.events.length === 100 && <p className="history-scope-note">The snapshot includes 100 session events. Available invoices, work and clearing rounds are also included above; some older timestamps or transaction links may be unavailable.</p>}
+      {hasOlder && <div className="list-pagination"><span>More session activity is available.</span><button className="button secondary" disabled={loadingOlder} onClick={onLoadOlder}>{loadingOlder ? 'Loading older activity…' : 'Load older activity'}</button></div>}
+      {data.history_data_available === false && <p className="history-scope-note">Some on-chain activity is awaiting confirmation. Recorded receipts and current wallet balances remain available.</p>}
     </section>
   );
 }

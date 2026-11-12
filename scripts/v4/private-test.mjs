@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {spawn,spawnSync}from 'node:child_process';
 import {generateKeyPairSync,createPrivateKey,createPublicKey,sign}from 'node:crypto';
 import {encryptV4Invoice,v4PrivateInvoiceCommitment,v4PrivateInputCommitment,v4PrivateDisclosureHash}from '../../packages/client/dist/v4.js';
-const built=spawnSync('cargo',['build','--locked','--offline','-p','ach-private-netting'],{stdio:'inherit'});if(built.status!==0)throw new Error('PRIVATE_TEST_BUILD_FAILED');
+const built=spawnSync('cargo',['build','--locked','--offline','-p','ach-private-netting'],{stdio:'inherit'});if(built.error||built.status!==0)throw new Error('PRIVATE_TEST_BUILD_FAILED');
 const c={protocol_version:4,network:'testnet',vault:'vault.testnet',token:'usd.testnet',decimals:6,rpc_url:'https://test.rpc.fastnear.com'};
 const secret='11'.repeat(32),privateKey=createPrivateKey({key:Buffer.concat([Buffer.from('302e020100300506032b656e04220420','hex'),Buffer.from(secret,'hex')]),format:'der',type:'pkcs8'});
 const encryption={protocol_version:4,worker_hash:'c'.repeat(64),public_key:createPublicKey(privateKey).export({format:'der',type:'spki'}).subarray(-32).toString('hex'),algorithm:'X25519-HKDF-SHA256-AES-256-GCM'};

@@ -8,6 +8,7 @@ node_modules/
 .next-premium*/
 .next-security-v3*/
 contracts/clearing/build/withdrawal-failure.*
+contracts/clearing/build/
 agent/.runtime-state.jsonl
 .vercel
 .local/

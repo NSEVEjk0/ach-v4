@@ -1,4 +1,5 @@
 /** Intents operates at the edge of ACH. Quotes never credit the vault. */
+import { routeJson } from './http.js';
 export const INTENTS_STATUS = ["KNOWN_DEPOSIT_TX", "PENDING_DEPOSIT", "INCOMPLETE_DEPOSIT", "PROCESSING", "SUCCESS", "REFUNDED", "FAILED"];
 const units = (s) => { if (!/^(0|[1-9]\d*)$/.test(s) || s.length > 78)
     throw new Error("INVALID_ROUTE_AMOUNT"); return BigInt(s); };
@@ -36,6 +37,8 @@ export function assertQuoteMatches(request, response) {
         throw new Error("INCOMPLETE_LIVE_QUOTE");
     if (!request.dry && (!Number.isFinite(Date.parse(response.quote.deadline)) || Date.parse(response.quote.deadline) > Date.parse(request.deadline)))
         throw new Error("QUOTE_DEADLINE_MISMATCH");
+    if (request.depositMode === 'SIMPLE' && response.quote.depositMemo || !request.dry && request.depositMode === 'MEMO' && !response.quote.depositMemo)
+        throw new Error('QUOTE_DEPOSIT_MODE_MISMATCH');
 }
 export function routeState(status) {
     switch (status) {
@@ -51,7 +54,7 @@ export function routeState(status) {
 }
 export function reconcileRoute(route, status, receipt) {
     const quoted = route.response.quote;
-    if (status.quoteResponse.quote.depositAddress !== quoted.depositAddress || status.quoteResponse.quote.depositMemo !== quoted.depositMemo)
+    if (status.quoteResponse.correlationId !== route.response.correlationId || ["depositAddress", "depositMemo", "amountIn", "amountOut", "minAmountOut", "deadline"].some(field => status.quoteResponse.quote[field] !== quoted[field]))
         throw new Error("ROUTE_STATUS_IDENTITY_MISMATCH");
     assertQuoteMatches(route.request, status.quoteResponse);
     const next = { ...route, raw_status: status.status, state: routeState(status.status), checked_at: status.updatedAt };
@@ -60,6 +63,8 @@ export function reconcileRoute(route, status, receipt) {
             throw new Error("TERMINAL_ROUTE_STATE_CONFLICT");
         return route;
     }
+    if (route.state === 'FAILED' && !['FAILED', 'REFUNDED'].includes(status.status))
+        throw new Error('TERMINAL_ROUTE_STATE_CONFLICT');
     if (status.status === "SUCCESS" && receipt) {
         if (!route.destination_chain || receipt.chain !== route.destination_chain || !receipt.confirmed || !receipt.tx_hash || receipt.recipient !== route.request.recipient || receipt.asset !== route.request.destinationAsset || units(receipt.amount) < units(quoted.minAmountOut))
             throw new Error("DESTINATION_RECEIPT_MISMATCH");
@@ -79,10 +84,10 @@ export class OneClickIntents {
         this.apiKey = apiKey;
     }
     async request(path, body) {
-        const response = await this.fetcher(`https://1click.chaindefuser.com/v0/${path}`, { method: body ? "POST" : "GET", headers: { "Content-Type": "application/json", ...(this.apiKey ? { "Authorization": `Bearer ${this.apiKey}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(20_000) });
+        const response = await this.fetcher(`https://1click.chaindefuser.com/v0/${path}`, { method: body ? "POST" : "GET", headers: { "Content-Type": "application/json", ...(this.apiKey ? { "Authorization": `Bearer ${this.apiKey}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}), redirect: 'error', signal: AbortSignal.timeout(20_000) });
         if (!response.ok)
             throw new Error(`INTENTS_API_${response.status}`);
-        return response.json();
+        return routeJson(response);
     }
     tokens() { return this.request("tokens"); }
     async quote(request) { validateQuoteRequest(request); const quote = await this.request("quote", request); assertQuoteMatches(request, quote); return quote; }

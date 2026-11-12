@@ -7,7 +7,8 @@ import {fileURLToPath} from 'node:url';
 const repository=path.resolve(fileURLToPath(new URL('../../',import.meta.url)));
 const roots=[
  'contracts/ach-v4','contracts/test-usdc','crates','workers/private-netting',
- 'packages/core/src','packages/client/src','packages/client/package.json','packages/client/package-lock.json',
+ 'packages/core/src','packages/core/package.json','packages/core/package-lock.json','packages/client/src','packages/client/package.json','packages/client/package-lock.json',
+ 'contracts/clearing/package.json','contracts/clearing/package-lock.json','contracts/clearing/scripts','contracts/clearing/src','contracts/clearing/test','contracts/clearing/vitest.config.ts',
  'packages/intents/src','packages/intents/package.json','packages/intents/package-lock.json',
  'services','web/app','web/components','web/lib','web/public','web/package.json','web/package-lock.json',
  'web/next.config.ts','web/postcss.config.mjs','web/tailwind.config.ts','web/tsconfig.json','web/.vercelignore',
@@ -34,9 +35,12 @@ export function sourceFingerprint(gitContext){
  const commit=gitContext?.commit??execFileSync('git',['rev-parse','HEAD'],{cwd:repository,encoding:'utf8'}).trim();
  const dirty=gitContext?.dirty??Boolean(execFileSync('git',['status','--porcelain'],{cwd:repository,encoding:'utf8'}).trim());
  if(!/^[a-f\d]{40}$/.test(commit)||typeof dirty!=='boolean')throw new Error('VERIFIED_GIT_CONTEXT_REQUIRED');
+ const fingerprint=digest(JSON.stringify(normalized,null,2)),publication=gitContext?.publication;
+ if(publication!==undefined&&(!publication||publication.verified!==true||publication.repository!=='NSEVEjk0/ach-v4'||publication.commit!==commit||publication.fingerprint_sha256!==fingerprint||dirty||!Number.isFinite(Date.parse(publication.verified_at))))throw new Error('PUBLISHED_SOURCE_CONTEXT_MISMATCH');
  return{
   commit,dirty,
-  fingerprint_sha256:digest(JSON.stringify(normalized,null,2)),file_count:normalized.length,
-  roots,repository_pushed:false,
+  fingerprint_sha256:fingerprint,file_count:normalized.length,
+  roots,repository_pushed:publication!==undefined,
+  ...(publication?{publication}:{}),
  };
 }

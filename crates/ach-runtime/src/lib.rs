@@ -20,6 +20,15 @@ impl<'a,S:Store> Transaction<'a,S>{
         let capacity=if bytes.len()<=existing{existing}else{bytes.len()+padding};
         bytes.resize(capacity,b' ');self.put(key,bytes);Ok(())
     }
+    /// Reserve an explicit future representation after writing a mutable record.
+    /// Generic padding can be consumed by approvals; terminal transitions must
+    /// retain their own capacity before funds become irrevocably committed.
+    pub fn reserve_for<T:Serialize>(&mut self,key:&str,future:&T)->Result<(),String>{
+        let minimum=serde_json::to_vec(future).map_err(|_|"STATE_ENCODING".to_string())?.len();
+        let mut bytes=self.get(key).ok_or("STATE_MISSING")?;
+        if bytes.len()<minimum{bytes.resize(minimum,b' ');self.put(key,bytes);}
+        Ok(())
+    }
     pub fn additional_bytes(&self)->u128{self.writes.iter().map(|(k,v)|v.as_ref().map(|new|{let old=self.base.get(k).map(|v|v.len()).unwrap_or(0);(new.len().saturating_sub(old)+if old==0{k.len()+64}else{32}) as u128}).unwrap_or(0)).sum()}
     pub fn storage_growth_bytes(&self)->usize{self.writes.iter().map(|(k,v)|v.as_ref().map(|new|{let old=self.base.get(k);new.len().saturating_sub(old.as_ref().map(Vec::len).unwrap_or(0))+if old.is_none(){k.len()+64}else{0}}).unwrap_or(0)).sum()}
     pub fn commit(self){for(k,v)in self.writes{if let Some(v)=v{self.base.put(&k,v)}else{self.base.remove(&k)}}}
@@ -49,6 +58,10 @@ pub mod near {
     }
     fn register(id:u64)->Vec<u8>{unsafe {let n=register_len(id);if n==u64::MAX{return vec![];}let mut v=vec![0u8;n as usize];read_register(id,v.as_mut_ptr() as u64);v}}
     pub fn read_input()->Vec<u8>{unsafe{input(0)};register(0)}
+    pub fn read_input_bounded(limit:usize)->Vec<u8>{
+        unsafe{input(0);let size=register_len(0);if size!=u64::MAX && size>limit as u64{fail("INPUT_TOO_LARGE");}}
+        register(0)
+    }
     pub fn view_context()->Context {unsafe{
         current_account_id(0);let current=String::from_utf8(register(0)).unwrap();
         let mut amount=[0u8;16];account_balance(amount.as_mut_ptr() as u64);

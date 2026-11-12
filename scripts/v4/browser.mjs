@@ -6,20 +6,32 @@ import {createHash}from 'node:crypto';
 import {parseEnv}from 'node:util';
 import path from 'node:path';
 import {privateRoot,privatePath,manifestPath,repoRoot,loadPrivateEnvironment}from '../../services/lib/paths.mjs';
+import {spawnLogged}from '../../services/lib/process.mjs';
+
+if(process.argv.includes('--local')){await import('./browser-local.mjs');process.exit(process.exitCode??0);}
 
 if(process.argv.includes('--sdk-only')){
  const isolated=mkdtempSync('/tmp/ach-sdk-install-');writeFileSync(path.join(isolated,'package.json'),JSON.stringify({private:true,type:'module'}),{mode:0o600});
- const install=spawnSync('npm',['install','--ignore-scripts','--no-audit','--no-fund',path.join(repoRoot,'web/public/sdk/ach-client-4.0.0.tgz'),path.join(repoRoot,'web/public/sdk/ach-intents-4.0.0.tgz')],{cwd:isolated,encoding:'utf8'});
- if(install.status!==0)throw new Error('ISOLATED_SDK_INSTALL_FAILED');
- const imported=spawnSync(process.execPath,['--input-type=module','-e','import {AchV4Client,V4NearTransport,V4RpcProvider} from "@ach/client/v4";import {OwnerIntentsRouter,NearTokenRouteSender,destinationReceiptVerifier} from "@ach/intents/owner";if(![AchV4Client,V4NearTransport,V4RpcProvider,OwnerIntentsRouter,NearTokenRouteSender,destinationReceiptVerifier].every(x=>typeof x==="function"))throw new Error("MISSING_EXPORT");'],{cwd:isolated,encoding:'utf8'});
- if(imported.status!==0)throw new Error('ISOLATED_SDK_IMPORT_FAILED');
- writeFileSync(path.join(isolated,'verification.json'),JSON.stringify({kind:'isolated-sdk-install',passed:true,node:process.version,exports:['AchV4Client','V4NearTransport','V4RpcProvider','OwnerIntentsRouter','NearTokenRouteSender','destinationReceiptVerifier']}),{mode:0o600});
+ const execute=(command,args,stage,filename)=>new Promise((resolve,reject)=>{
+  const child=spawnLogged(command,args,{cwd:isolated,logPath:path.join(isolated,filename)});
+  const timer=setTimeout(()=>{child.kill('SIGKILL');reject(new Error(stage+'_TIMEOUT'));},60000);
+  child.once('error',()=>{clearTimeout(timer);reject(new Error(stage));});
+  child.once('close',(code,signal)=>{clearTimeout(timer);if(code!==0||signal)reject(new Error(stage));else resolve({exit_code:code});});
+ });
+ const install=await execute('npm',['install','--ignore-scripts','--no-audit','--no-fund',...(process.argv.includes('--offline')?['--offline']:[]),path.join(repoRoot,'web/public/sdk/ach-client-4.0.0.tgz'),path.join(repoRoot,'web/public/sdk/ach-intents-4.0.0.tgz')],'ISOLATED_SDK_INSTALL_FAILED','install.log');
+ const source='import {writeFileSync}from "node:fs";import {AchV4Client,V4NearTransport,V4RpcProvider,v4PurchaseGroupId,v4FundedInvoiceId,v4FundingGroupHash} from "@ach/client/v4";import {OwnerIntentsRouter,NearTokenRouteSender,destinationReceiptVerifier} from "@ach/intents/owner";if(![AchV4Client,V4NearTransport,V4RpcProvider,OwnerIntentsRouter,NearTokenRouteSender,destinationReceiptVerifier,v4PurchaseGroupId,v4FundedInvoiceId,v4FundingGroupHash,AchV4Client.prototype.authorizePurchaseGroup,V4NearTransport.prototype.reconcile,NearTokenRouteSender.prototype.reconcileExactQuote].every(x=>typeof x==="function"))throw new Error("MISSING_EXPORT");writeFileSync(new URL("./import-verification.json",import.meta.url),JSON.stringify({kind:"isolated-sdk-install",passed:true,node:process.version,exports:["AchV4Client","V4NearTransport","V4RpcProvider","OwnerIntentsRouter","NearTokenRouteSender","destinationReceiptVerifier","v4PurchaseGroupId","v4FundedInvoiceId","v4FundingGroupHash"],methods:["authorizePurchaseGroup","reconcile","reconcileExactQuote"],resolved_modules:{client:import.meta.resolve("@ach/client/v4"),intents:import.meta.resolve("@ach/intents/owner")}}),{mode:0o600,flag:"wx"});';
+ const script=path.join(isolated,'verify.mjs');writeFileSync(script,source,{mode:0o600});
+ const imported=await execute(process.execPath,[script],'ISOLATED_SDK_IMPORT_FAILED','import.log'),proof=path.join(isolated,'import-verification.json');
+ if(!existsSync(proof))throw new Error('ISOLATED_SDK_IMPORT_EVIDENCE_REQUIRED');
+ const verification=JSON.parse(readFileSync(proof,'utf8'));
+ if(verification.kind!=='isolated-sdk-install'||verification.passed!==true||Object.values(verification.resolved_modules??{}).length!==2||!Object.values(verification.resolved_modules).every(url=>url.startsWith(new URL('node_modules/',new URL('file://'+isolated+'/')).href)))throw new Error('ISOLATED_SDK_IMPORT_EVIDENCE_REQUIRED');
+ writeFileSync(path.join(isolated,'verification.json'),JSON.stringify({...verification,install_exit_code:install.exit_code,import_exit_code:imported.exit_code,verification_script_sha256:createHash('sha256').update(source).digest('hex')}),{mode:0o600});
  console.log(JSON.stringify({isolated_sdk_install:'passed',outside_repository:true,evidence:path.join(isolated,'verification.json')}));process.exit(0);
 }
 
 if(process.argv.includes('--prepare')){
  const result=spawnSync('npm',['install','--ignore-scripts'],{cwd:repoRoot,stdio:'inherit'});
- if(result.status!==0)throw new Error('BROWSER_DEPENDENCY_SETUP_FAILED');
+ if(result.error||result.status!==0)throw new Error('BROWSER_DEPENDENCY_SETUP_FAILED');
  const {chromium}=await import('playwright');const browser=await chromium.launch({headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});await browser.close();
  console.log(JSON.stringify({browser_dependencies:'ready',funds_spent:false}));process.exit(0);
 }
@@ -79,7 +91,7 @@ async function configureCookie(context){
 }
 async function visitAll(page){
  for(const[name,width,height]of [['landing',1440,1000],['landing',834,1000],['landing',390,844],['landing',320,844]]){await page.goto(base,{waitUntil:'networkidle'});await layout(page,name,width,height);}
- await page.getByRole('button',{name:'Show net payments',exact:true}).click();assert.match(await page.locator('.example-net-amount').innerText(),/40/);await page.getByRole('button',{name:'A and B only',exact:true}).click();assert.match(await page.locator('.example-net-amount').innerText(),/100/);check('interactive-clearing-example',{full_net:'40',subgroup_net:'100'});
+  await page.getByRole('button',{name:'Show net payments',exact:true}).click();assert.equal((await page.locator('.example-net-amount').innerText()).trim(),'20 USDC');await page.getByRole('button',{name:'A and B only',exact:true}).click();assert.equal((await page.locator('.example-net-amount').innerText()).trim(),'100 USDC');check('interactive-clearing-example',{full_net:'20',subgroup_net:'100'});
  await page.goto(base+'/developers',{waitUntil:'networkidle'});assert.ok(await page.locator('#funding').count());
  for(const filename of ['ach-client-4.0.0.tgz','ach-intents-4.0.0.tgz']){const r=await page.context().request.get(base+'/sdk/'+filename);assert.ok(r.ok(),filename+' missing');assert.ok((await r.body()).length>1000);}check('downloadable-sdk');
  await layout(page,'developers',390,844);
@@ -153,6 +165,7 @@ async function liveJourney(page,context){
    }
    assert.deepEqual(consumed.sort(),publicIds.slice().sort(),'all three bills must settle exactly once');
    assert.ok(totalMovement>=20000n&&totalMovement<=280000n);
+   if(config.workflow_revision===2){assert.equal(rounds.length,1,'corrected funded purchases must clear as one group');assert.equal(totalMovement,20000n,'corrected three-bill net movement');}
    if(rounds.length!==1||totalMovement!==20000n){
     const finding={id:'W06',kind:'full-group-proposals-lost-to-separate-rounds',expected_full_group_net_units:'20000',actual_net_units:totalMovement.toString(),settled_rounds:rounds.length,invoice_count:publicIds.length,financial_effects_verified:true};
     report.workflow_findings??=[];report.workflow_findings.push(finding);console.log(JSON.stringify({phase:'observed-workflow-finding',...finding}));
@@ -183,11 +196,29 @@ async function liveJourney(page,context){
  await until(()=>snapshot(context),s=>s.external_balances.find(b=>b.account_id===audit.account_id)?.amount==='10000','browser-withdrawal');check('live-browser-withdrawal');
  await page.getByRole('button',{name:'Deposit from agent account',exact:true}).waitFor({timeout:30000});await page.locator('.redeposit-form input').fill('0.01');await page.getByRole('button',{name:'Deposit from agent account',exact:true}).click();
  await until(()=>snapshot(context),s=>s.external_balances.find(b=>b.account_id===audit.account_id)?.amount==='0','browser-redeposit');check('live-browser-authenticated-redeposit');
- if(config.private?.enabled)await run('private');else throw new Error('LIVE_PRIVATE_MODE_REQUIRED');
+ if(config.private?.enabled)settled=await run('private');else throw new Error('LIVE_PRIVATE_MODE_REQUIRED');
+ if(config.workflow_revision===2){
+  const previousPublic=seen.public.request_id,completed=settled.jobs.filter(job=>job.state==='COMPLETE').length;
+  delete seen.public;writeFileSync(requestFile,JSON.stringify(seen),{mode:0o600});
+  await page.waitForTimeout(5100);settled=await run('public');
+  assert.notEqual(seen.public.request_id,previousPublic);assert.ok(settled.jobs.filter(job=>job.state==='COMPLETE').length>=3);assert.equal(settled.jobs.filter(job=>job.state==='COMPLETE').length,completed+1);check('live-third-identical-brief');
+  const original=settled,originalId=settled.session.id,originalRequests=structuredClone(seen),privateJob=original.jobs.find(job=>job.id==='run-'+seen.private.request_id);
+  assert.ok(privateJob?.sealed_result);const originalAccounts=new Set(original.session.participants.map(participant=>participant.account_id));
+  await navigateWorkspace(page,'Work');await page.getByRole('button',{name:'Start another test workspace',exact:true}).click();
+  let fresh=await until(()=>snapshot(context),state=>state.session.id!==originalId&&state.session.state==='READY','fresh-judge-workspace',480000);
+  assert.equal(fresh.jobs.length,0);assert.ok(fresh.session.participants.every(participant=>!originalAccounts.has(participant.account_id)));
+  for(const key of Object.keys(seen))delete seen[key];writeFileSync(requestFile,JSON.stringify(seen),{mode:0o600});
+  await page.waitForTimeout(5100);fresh=await run('public');assert.equal(fresh.jobs.filter(job=>job.state==='COMPLETE').length,1);assert.equal(fresh.invoices.length,3);check('live-fresh-workspace-work-and-clearing');
+  await navigateWorkspace(page,'Settings');await page.getByRole('combobox',{name:'Test workspace'}).locator(`option[value="${originalId}"]`).waitFor({state:'attached',timeout:30000});await page.getByRole('combobox',{name:'Test workspace'}).selectOption(originalId);
+  settled=await until(()=>snapshot(context),state=>state.session.id===originalId&&state.session.state==='READY','reopen-original-judge-workspace');
+  Object.assign(seen,originalRequests);writeFileSync(requestFile,JSON.stringify(seen),{mode:0o600});
+  assert.equal(settled.jobs.filter(job=>job.state==='COMPLETE').length,original.jobs.filter(job=>job.state==='COMPLETE').length);assert.deepEqual(settled.jobs.find(job=>job.id===privateJob.id).sealed_result,privateJob.sealed_result);
+  await navigateWorkspace(page,'History');await page.locator(`a[href*="${privateJob.id}"]`).first().click();await page.getByRole('dialog').locator('.artifact-surface').waitFor({timeout:30000});assert.match(await page.getByRole('dialog').innerText(),/92713/);await page.getByRole('button',{name:'Close details',exact:true}).click();check('live-workspace-switch-preserves-history-and-private-results');
+ }
  // Save browser keys and cookies only in the private working namespace.
  await context.storageState({path:path.join(output,'private-browser-state.json')});
  await navigateWorkspace(page,'Settings');await layout(page,'private-settings',1440);
- const state=await snapshot(context);assert.equal(state.invoices.length,3);assert.equal(state.private_invoices.length,3);
+ const state=await snapshot(context);if(config.workflow_revision===2){assert.ok(state.invoices.length>=6);assert.ok(state.private_invoices.length>=3);}else{assert.equal(state.invoices.length,3);assert.equal(state.private_invoices.length,3);}
  // A separate browser has no decryption key and no access to this session.
  const isolated=await browser.newContext();const other=await isolated.request.get(base+'/api/v4/snapshot');assert.equal(other.status(),401);await isolated.close();check('browser-session-isolation');
 }

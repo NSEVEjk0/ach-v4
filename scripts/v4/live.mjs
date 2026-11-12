@@ -6,11 +6,12 @@ import {JsonRpcProvider}from '../../packages/client/dist/near.js';
 import {v4Digest,V4RpcProvider}from '../../packages/client/dist/v4.js';
 import path from 'node:path';
 import {privatePath,manifestPath,loadPrivateEnvironment}from '../../services/lib/paths.mjs';
+import {requireServiceLayout}from '../../services/lib/workflow.mjs';
 loadPrivateEnvironment();
 if(process.argv.includes('--gas')){await import('./gas.mjs');process.exit(0);}
 if(process.argv.includes('--restart-services')){
  const restart=spawnSync(process.execPath,['scripts/v4/services.mjs'],{stdio:'inherit',env:process.env});
- if(restart.status!==0)throw new Error('LIVE_RECOVERY_RESTART_FAILED');
+ if(restart.error||restart.status!==0)throw new Error('LIVE_RECOVERY_RESTART_FAILED');
 }
 const config=JSON.parse(readFileSync(manifestPath,'utf8')),base=config.services.coordinator,serviceToken=process.env.ACH_V4_SERVICE_TOKEN,provider=new V4RpcProvider(config.rpc_urls??config.rpc_url);
 const save=(p,v)=>writeFileSync(p,JSON.stringify(v,null,2),{mode:0o600});
@@ -45,6 +46,7 @@ async function publicFlow(){
  await request('/run',{request_id:oneId,brief:'Create a simple chart only, without purchasing an audit.',mode:'chart',budget:'100000',privacy:'public',data:[{label:'Agent calls',value:42},{label:'Agent reviews',value:31}]},token);
  const one=await until(()=>request('/snapshot',undefined,token),s=>s.jobs.some(j=>j.id==='run-'+oneId&&j.state==='COMPLETE'),'one-way-service');
  const oneBills=one.jobs.find(j=>j.id==='run-'+oneId).result.bills.map(i=>i.spec.id);
+ await request('/clearing-policy',{mode:'automatic'},token);
  const oneSettled=await until(()=>request('/snapshot',undefined,token),s=>s.rounds.some(r=>r.status==='SETTLED'&&oneBills.every(i=>r.input.invoice_ids.includes(i))),'bounded-one-way-clearing');
  const oneRound=oneSettled.rounds.find(r=>r.status==='SETTLED'&&oneBills.every(i=>r.input.invoice_ids.includes(i)));assert.equal(oneRound.gross_invoice_volume,'100000');assert.equal(oneRound.net_settlement_volume,'100000');
  return{session_id:owned.session.id,actual_llm:{provider:artifact.planner.provider,model:artifact.planner.model,response_id:artifact.planner.response_id,response_hash:artifact.planner.response_hash},artifact_sha256:artifact.chart.sha256,public_round:round,withdrawal,one_way_round:oneRound,backing:await backing()};
@@ -65,6 +67,7 @@ if(process.argv.includes('--verify-only')){
  if(outputIndex>=0){const filename=process.argv[outputIndex+1];assert.ok(filename&&!filename.startsWith('--'),'VERIFICATION_OUTPUT_REQUIRED');save(filename,verified);}
  console.log(JSON.stringify({phase:'independent-final-backing',...verified}));process.exit(0);
 }
+requireServiceLayout(config);
 if(!evidence.public_flow||evidence.code_hash!==config.code_hash){console.log(JSON.stringify({phase:'live-public-workflow',vault:config.vault}));evidence.public_flow=await publicFlow();evidence.code_hash=config.code_hash;save(evidenceFile,evidence);}
 if(!process.argv.includes('--public-only')&&(!evidence.private_flow||evidence.private_flow.backing.code_hash!==config.code_hash)){
  const{runPrivateLive}=await import('./private-live.mjs');console.log(JSON.stringify({phase:'live-private-workflow',vault:config.vault}));evidence.private_flow=await runPrivateLive({config,request,session,until,provider,backing});save(evidenceFile,evidence);

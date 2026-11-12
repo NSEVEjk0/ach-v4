@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateKeyPairSync,createPublicKey,diffieHellman,hkdfSync,createCipheriv,createDecipheriv,randomBytes}from 'node:crypto';
-import {canonicalV4,V4BroadcastUnknown}from '../../packages/client/dist/v4.js';
-import {setup}from './commerce.test.mjs';
+import {canonicalV4,V4BroadcastUnknown,v4PrivateInvoiceCommitment,encryptV4Invoice,v4PrivateInputCommitment}from '../../packages/client/dist/v4.js';
+import {setup}from './fixtures/commerce.mjs';
+import {privateNegativeFixture}from '../../scripts/v4/private-negative-fixture.mjs';
 
 function encryptedBrief(config,session,id,publicHex,brief,data){
  const pair=generateKeyPairSync('x25519'),peer=createPublicKey({key:Buffer.concat([Buffer.from('302a300506032b656e032100','hex'),Buffer.from(publicHex,'hex')]),format:'der',type:'spki'});
@@ -58,7 +59,7 @@ test('unknown private broadcasts remain pending and reconcile existing failed wo
   assert.equal(h.workerRuns.filter(r=>r.input.operation==='verify').length,3);
   assert.equal(h.store.job('run-'+id).failures,3,'historical failures remain recorded');
   for(const member of h.session.participants)assert.equal((await h.identities.get(member.kind).client.balance()).gross_purchase_budget_used,'100000');
-  const before=await h.coordinator.snapshot(h.session);assert.ok(before.private_invoices.every(i=>i.status==='ACCEPTED'));
+  const before=await h.coordinator.snapshot(h.session);assert.ok(before.private_invoices.every(i=>i.status==='READY'));
   const round=await h.coordinator.clear(h.session,{request_id:'d'.repeat(32),privacy:'private',selected_accounts:h.session.participants.map(p=>p.account_id),invoice_ids:before.private_invoices.map(i=>i.nullifier)});
   assert.equal(round.round.status,'SETTLED');assert.equal(round.round.net_settlement_volume,'20000');
  }finally{h.cleanup();}
@@ -71,8 +72,8 @@ test('private deliveries become durable accepted receipts before clearing, survi
   const request={request_id:id,mode:'report',budget:'300000',privacy:'private',sealed_brief:sealed.sealed_brief};
   const response=await h.coordinator.run(h.session,request);assert.equal(response.kind,'encrypted-result');
   const delivered=sealed.open(response);assert.equal(delivered.chart.audit.valid,true);assert.equal(delivered.bills.length,3);
-  const before=await h.coordinator.snapshot(h.session);assert.equal(before.invoices.length,0);assert.equal(before.private_invoices.length,3);assert.ok(before.private_invoices.every(i=>i.status==='ACCEPTED'));
-  assert.equal(before.rounds.length,0,'receipt verification must not create a funded or lingering clearing proposal');
+  const before=await h.coordinator.snapshot(h.session);assert.equal(before.invoices.length,0);assert.equal(before.private_invoices.length,3);assert.ok(before.private_invoices.every(i=>i.status==='READY'));
+  assert.equal(before.rounds.length,1,'useful delivery requires exactly one fully funded clearing group');assert.equal(before.rounds[0].status,'READY');
   const verifications=h.workerRuns.filter(r=>r.input.operation==='verify');assert.equal(verifications.length,3);
   for(const run of verifications){assert.equal(run.output.operation,'verify');assert.ok(run.output.positions.every(p=>p.net==='0'));assert.ok(run.input.encrypted_invoices.every(e=>Buffer.from(e.ciphertext,'base64').length===2064));assert.ok(!JSON.stringify(run).includes(secret));assert.ok(!JSON.stringify(run.output).includes('artifact_hash'));}
   for(const participant of h.session.participants)assert.equal((await h.identities.get(participant.kind).client.balance()).gross_purchase_budget_used,'100000');
@@ -90,5 +91,22 @@ test('private deliveries become durable accepted receipts before clearing, survi
   restarted.agents.privateSummary=async()=>{throw new Error('PROVIDER_UNAVAILABLE');};
   const offline=await restarted.snapshot(h.store.session(h.session.id));assert.equal(offline.balances.length,3);assert.equal(offline.private_data_available,false);
   await h.owners.get('audit').withdraw('private-owner-withdrawal','20000');assert.equal((await h.owners.get('audit').withdrawal('private-owner-withdrawal')).status,'COMPLETED');
+ }finally{h.cleanup();}
+});
+
+test('the release tamper fixture first funds its private order and refunds its cash and allowance only at group expiry',async()=>{
+ const h=await setup({privateMode:true});try{
+  const buyer=h.identities.get('research'),seller=h.identities.get('visual'),coordinator=h.owners.get('coordinator'),before=await buyer.client.balance(),{input,spec,salt}=privateNegativeFixture(h.config,{seed:'d'.repeat(32),buyer:buyer.account_id,seller:seller.account_id,now:h.chain.now});
+  let group=(await buyer.client.proposePurchaseGroup(input)).value;
+  for(const identity of [buyer,seller])group=(await identity.client.authorizePurchaseGroup(group,input.positions.find(position=>position.account_id===identity.account_id).net)).value;
+  assert.equal(group.status,'FUNDED');assert.equal((await buyer.client.balance()).reserved,'1');
+  const authorization=(await buyer.client.authorizePrivatePurchase({purchase_id:spec.purchase_id,terms_version:1,seller:seller.account_id,order_commitment:input.orders[0].order_commitment,deadline_ms:input.deadline_ms})).value;
+  const commitment=v4PrivateInvoiceCommitment(h.config,spec,salt),contribution={spec,salt,signatures:await Promise.all([buyer,seller].map(async identity=>({account_id:identity.account_id,key_epoch:(await identity.client.balance()).policy.epoch,signature:Buffer.from(identity.key.sign(Buffer.from(commitment,'hex')).signature).toString('base64')})))};
+  const envelope=encryptV4Invoice(h.config,await coordinator.privateEncryptionKey(),contribution),bytes=Buffer.from(envelope.ciphertext,'base64');bytes[40]^=1;envelope.ciphertext=bytes.toString('base64');
+  const request={id:'release-negative-fixture',profile:h.config.private.profile,members:[buyer.account_id,seller.account_id],deadline_ms:h.chain.now+300000,encrypted_invoices:[envelope],verification_only:true};request.input_commitment=v4PrivateInputCommitment(h.config,request.id,request.deadline_ms,h.config.private.hash,[envelope]);
+  await coordinator.requestPrivateRound(request);assert.ok(['FAILED','INVALID_OUTPUT'].includes((await coordinator.privateRequest(request.id)).status));assert.equal(await coordinator.privateInvoice(authorization.charge_id),null);
+  await h.owners.get('research').cancelPendingPrivatePurchase(authorization);await h.owners.get('visual').cancelPendingPrivatePurchase(authorization);assert.equal((await buyer.client.balance()).reserved,'1');
+  h.chain.now=input.deadline_ms+1;await h.owners.get('research').expirePurchaseGroup(input.id);
+  const after=await buyer.client.balance();assert.equal(after.balance,before.balance);assert.equal(after.reserved,before.reserved);assert.equal(after.gross_purchase_budget_used,before.gross_purchase_budget_used);assert.equal((await coordinator.privatePurchase(authorization.charge_id)).status,'CANCELLED');
  }finally{h.cleanup();}
 });

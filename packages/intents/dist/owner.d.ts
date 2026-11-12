@@ -8,12 +8,15 @@ export interface OwnerRoute extends Route {
     kind: 'funding' | 'payout';
     source_chain: string;
     destination_chain: string;
+    source_contract?: string;
     approval_hash: string;
     withdrawal_id?: string;
     deposit_id?: string;
     source_submission_recorded?: boolean;
+    source_attempt_recorded?: boolean;
     deposit_confirmed?: boolean;
     deposit_tx?: string;
+    deposit_amount?: string;
 }
 export interface RouteStore {
     get(id: string): Promise<OwnerRoute | undefined>;
@@ -24,6 +27,11 @@ export interface SourceSender {
     account_id: string;
     asset_id: string;
     sendExactQuote(route: OwnerRoute, operationId: string): Promise<{
+        tx_hash: string;
+        confirmed: boolean;
+    }>;
+    /** Observe previously signed bytes only; this must never send a new transfer. */
+    reconcileExactQuote?(route: OwnerRoute, operationId: string): Promise<{
         tx_hash: string;
         confirmed: boolean;
     }>;
@@ -40,9 +48,13 @@ export declare class OwnerIntentsRouter {
     constructor(ach: AchV4Client, api: OneClickIntents, store: RouteStore, verifyReceipt: ReceiptVerifier, clock?: () => number);
     private record;
     prepare(id: string, kind: 'funding' | 'payout', request: QuoteRequest): Promise<OwnerRoute>;
+    private prepareRoute;
     execute(id: string, approvedHash: string, sender: SourceSender): Promise<OwnerRoute>;
+    private executeRoute;
     refresh(id: string): Promise<OwnerRoute>;
+    private refreshRoute;
     depositReceivedFunding(id: string): Promise<OwnerRoute>;
+    private depositFundingRoute;
 }
 /** NEAR NEP-141 source leg with the owner's durable, signer-backed transport. */
 export declare class NearTokenRouteSender implements SourceSender {
@@ -50,7 +62,12 @@ export declare class NearTokenRouteSender implements SourceSender {
     readonly account_id: string;
     readonly asset_id: string;
     constructor(ach: AchV4Client);
+    private transfer;
     sendExactQuote(route: OwnerRoute, operationId: string): Promise<{
+        tx_hash: string;
+        confirmed: boolean;
+    }>;
+    reconcileExactQuote(route: OwnerRoute, operationId: string): Promise<{
         tx_hash: string;
         confirmed: boolean;
     }>;

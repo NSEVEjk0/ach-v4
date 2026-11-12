@@ -39,3 +39,21 @@ test('an included but incomplete operation is observed without broadcasting a se
  await assert.rejects(transport.call('token.testnet','ft_transfer',{receiver_id:'other.testnet',amount:'100'},args),V4BroadcastUnknown);
  await assert.rejects(transport.call('token.testnet','ft_transfer',{receiver_id:'other.testnet',amount:'100'},args),V4BroadcastUnknown);assert.equal(broadcasts,1);
 });
+
+test('read-only reconciliation never broadcasts after expiry and non-final outcomes remain uncertain',async()=>{
+ const journal=new V4MemoryJournal(),transport=new V4NearTransport('owner.testnet','https://test.rpc.fastnear.com',KeyPair.fromRandom('ed25519').toString(),journal);let broadcasts=0;
+ transport.provider.viewAccessKey=async()=>({nonce:1n,permission:'FullAccess'});transport.provider.viewBlock=async()=>({header:{hash:baseEncode(new Uint8Array(32))}});
+ transport.provider.sendTransactionUntil=async()=>{broadcasts++;throw new Error('Connection interrupted');};
+ const args={receiver_id:'other.testnet',amount:'100'},options={operation_id:'expired-payment',deposit:1n};
+ await assert.rejects(transport.reconcile('token.testnet','ft_transfer',args,options),/TRANSACTION_NOT_RECORDED/);assert.equal(broadcasts,0);
+ await assert.rejects(transport.call('token.testnet','ft_transfer',args,options),V4BroadcastUnknown);
+ transport.provider.viewTransactionStatus=async()=>{throw new Error("Transaction doesn't exist");};
+ await assert.rejects(transport.reconcile('token.testnet','ft_transfer',args,options),V4BroadcastUnknown);assert.equal(broadcasts,1);
+ transport.provider.viewTransactionStatus=async()=>({status:{SuccessValue:'bnVsbA=='}});
+ await assert.rejects(transport.reconcile('token.testnet','ft_transfer',args,options),V4BroadcastUnknown);assert.equal(broadcasts,1);
+ transport.provider.viewTransactionStatus=async()=>({final_execution_status:'EXECUTED',status:{SuccessValue:'bnVsbA=='}});
+ await assert.rejects(transport.reconcile('token.testnet','ft_transfer',args,options),V4BroadcastUnknown);assert.equal((await journal.get(options.operation_id)).state,'UNKNOWN');
+ transport.provider.viewTransactionStatus=async()=>({final_execution_status:'FINAL',status:{SuccessValue:'bnVsbA=='}});
+ assert.equal((await transport.reconcile('token.testnet','ft_transfer',args,options)).evidence,'near_final');assert.equal(broadcasts,1);
+ await assert.rejects(transport.reconcile('token.testnet','ft_transfer',{...args,amount:'101'},options),/REQUEST_ID_CONFLICT/);
+});

@@ -11,6 +11,7 @@ export interface V4Deployment {
     rpc_url: string;
     rpc_urls?: string[];
     code_hash?: string;
+    workflow_revision?: 2;
 }
 export interface V4InvoiceSpec {
     id: string;
@@ -41,10 +42,39 @@ export interface V4Invoice {
     seller_acceptance: V4Acceptance | null;
     round_id: string | null;
     sequence: number;
+    funding_group_id?: string | null;
 }
 export interface V4Position {
     account_id: string;
     net: V4Units;
+}
+export interface V4FundingOrder {
+    purchase_id: string;
+    terms_version: number;
+    buyer: string;
+    seller: string;
+    order_commitment: string;
+    public_terms: {
+        amount: V4Units;
+        service: string;
+        terms_hash: string;
+        artifact_hash: string;
+    } | null;
+}
+export interface V4FundingGroupInput {
+    id: string;
+    orders: V4FundingOrder[];
+    positions: V4Position[];
+    deadline_ms: number;
+    private: boolean;
+}
+export interface V4FundingGroup {
+    input: V4FundingGroupInput;
+    hash: string;
+    proposer: string;
+    status: "COLLECTING" | "FUNDED" | "READY" | "SETTLED" | "EXPIRED";
+    approvals: V4Approval[];
+    round_id: string | null;
 }
 export interface V4RoundInput {
     id: string;
@@ -99,6 +129,8 @@ export interface V4Balance {
     gross_purchase_budget_used: V4Units;
     active_proposals: number;
     active_authorizations: number;
+    activity_count?: number;
+    sponsored_records?: number;
 }
 export interface V4Withdrawal {
     id: string;
@@ -131,6 +163,8 @@ export interface V4PrivatePurchaseAuthorization {
     status: "AUTHORIZED" | "FINALIZED" | "CANCELLED";
     buyer_cancelled?: boolean;
     seller_cancelled?: boolean;
+    expires_at_ms?: number;
+    funding_group_id?: string | null;
 }
 export interface V4EncryptedInvoice {
     nullifier: string;
@@ -153,6 +187,7 @@ export interface V4PrivateRoundRequest {
     encrypted_invoices: V4EncryptedInvoice[];
     verification_only?: boolean;
     disclosure_signatures?: V4PrivateSignature[];
+    funding_group_id?: string;
 }
 export interface V4Page<T> {
     items: T[];
@@ -176,6 +211,8 @@ export interface V4Transport {
     codeHash?(contract: string): Promise<string>;
     view<T>(contract: string, method: string, args: Record<string, unknown>): Promise<T>;
     call<T>(contract: string, method: string, args: Record<string, unknown>, options: V4CallOptions): Promise<V4Confirmed<T>>;
+    /** Read an already journaled operation without signing or broadcasting. */
+    reconcile?<T>(contract: string, method: string, args: Record<string, unknown>, options: V4CallOptions): Promise<V4Confirmed<T>>;
 }
 export interface V4Operation {
     id: string;
@@ -184,6 +221,8 @@ export interface V4Operation {
     tx_hash: string;
     signed_transaction: string;
     state: "SIGNED" | "UNKNOWN" | "CONFIRMED" | "FAILED";
+    created_at_ms?: number;
+    amount?: V4Units;
     result?: V4Confirmed<unknown>;
     error?: string;
 }
@@ -208,6 +247,9 @@ export declare function canonicalV4(purpose: string, network: string, vault: str
 export declare function canonicalV4Invoice(c: V4Deployment, i: V4InvoiceSpec): Uint8Array;
 export declare function v4InvoiceHash(c: V4Deployment, i: V4InvoiceSpec): string;
 export declare function v4ChargeId(c: V4Deployment, i: Pick<V4InvoiceSpec, "buyer" | "purchase_id" | "terms_version">): string;
+export declare function v4FundedInvoiceId(c: V4Deployment, order: Pick<V4InvoiceSpec, "buyer" | "purchase_id" | "terms_version">): string;
+export declare function v4PurchaseGroupId(c: V4Deployment, proposer: string, requestId: string): string;
+export declare function v4FundingGroupHash(c: V4Deployment, input: V4FundingGroupInput): string;
 export declare function v4PrivateInvoiceCommitment(c: V4Deployment, spec: V4InvoiceSpec, salt: string): string;
 export declare function v4PrivateInputCommitment(c: V4Deployment, requestId: string, deadline: number, workerHash: string, envelopes: V4EncryptedInvoice[]): string;
 export declare function v4PrivateDisclosureHash(c: V4Deployment, inputCommitment: string, members: string[]): string;
@@ -236,16 +278,17 @@ export declare class V4RpcProvider extends JsonRpcProvider {
     constructor(urls: string | readonly string[]);
     sendJsonRpc: JsonRpcProvider['sendJsonRpc'];
 }
+export declare function withV4SignerLock<T>(account: Account, task: () => Promise<T>): Promise<T>;
 export declare class V4NearTransport implements V4Transport {
     readonly account_id: string;
     private journal;
     readonly provider: JsonRpcProvider;
     readonly account: Account;
-    private queue;
     constructor(account_id: string, rpc: string | readonly string[], signer: Signer | KeyPairString, journal: V4Journal);
     codeHash(contract: string): Promise<string>;
     view<T>(contract: string, method: string, args: Record<string, unknown>): Promise<T>;
     call<T>(contract: string, method: string, args: Record<string, unknown>, options: V4CallOptions): Promise<V4Confirmed<T>>;
+    reconcile<T>(contract: string, method: string, args: Record<string, unknown>, options: V4CallOptions): Promise<V4Confirmed<T>>;
     private submit;
     private confirm;
 }
@@ -255,15 +298,26 @@ export declare class AchV4Client {
     readonly deployment: V4Deployment;
     private validated;
     constructor(config: V4Deployment, transport: V4Transport, role?: "owner" | "agent");
-    assertDeployment(): Promise<void>;
+    assertDeployment(refresh?: boolean): Promise<void>;
     private read;
     private write;
     register(name: string, requestId?: string): Promise<V4Confirmed<V4Balance>>;
+    sponsorAccount(account_id: string, name: string, expires_at_ms: number, requestId: string): Promise<V4Confirmed<unknown>>;
     setPolicy(policy: Omit<V4Policy, "epoch" | "revoked">, requestId: string): Promise<V4Confirmed<V4Policy>>;
     revokeAgent(requestId: string): Promise<V4Confirmed<V4Policy>>;
     balance(account_id?: string): Promise<V4Balance>;
     invoice(id: string): Promise<V4Invoice>;
     round(id: string): Promise<V4Round>;
+    purchaseGroup(id: string): Promise<V4FundingGroup>;
+    purchaseOrder(id: string): Promise<{
+        group_id: string;
+        order: V4FundingOrder;
+        status: string;
+        invoice_id: string | null;
+    } | null>;
+    proposePurchaseGroup(input: V4FundingGroupInput): Promise<V4Confirmed<V4FundingGroup>>;
+    authorizePurchaseGroup(group: V4FundingGroup, expected_net: string): Promise<V4Confirmed<V4FundingGroup>>;
+    expirePurchaseGroup(id: string): Promise<V4Confirmed<V4FundingGroup>>;
     proposeInvoice(spec: V4InvoiceSpec): Promise<V4Confirmed<V4Invoice>>;
     acceptInvoice(invoice: V4Invoice): Promise<V4Confirmed<V4Invoice>>;
     cancelInvoice(invoice: V4Invoice): Promise<V4Confirmed<V4Invoice>>;
@@ -308,6 +362,7 @@ export declare class AchV4Client {
         terms_version: number;
         seller: string;
         order_commitment: string;
+        deadline_ms?: number;
     }): Promise<V4Confirmed<V4PrivatePurchaseAuthorization>>;
     requestPrivateRound(request: V4PrivateRoundRequest, sponsorPayment?: bigint): Promise<V4Confirmed<{
         id: string;

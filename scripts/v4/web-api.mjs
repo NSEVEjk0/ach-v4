@@ -6,11 +6,14 @@ import {homedir}from 'node:os';
 import {createHash}from 'node:crypto';
 import path from 'node:path';
 import {privatePath,manifestPath,repoRoot,loadPrivateEnvironment}from '../../services/lib/paths.mjs';
+import {requireServiceLayout}from '../../services/lib/workflow.mjs';
 
 const config=JSON.parse(readFileSync(manifestPath,'utf8')),directory=privatePath('web-redesign-release','api');
+requireServiceLayout(config);
 mkdirSync(directory,{recursive:true,mode:0o700});
 const stateFile=path.join(directory,'state.json');
-const state=existsSync(stateFile)?JSON.parse(readFileSync(stateFile,'utf8')):{vault:config.vault,code_hash:config.code_hash,repository_pushed:false};
+const state=existsSync(stateFile)?JSON.parse(readFileSync(stateFile,'utf8')):{vault:config.vault,code_hash:config.code_hash};
+state.repository_pushed=config.source?.repository_pushed===true;
 assert.equal(state.vault,config.vault,'WEB_RELEASE_NAMESPACE_MISMATCH');
 const save=(name,value)=>writeFileSync(path.join(directory,name),typeof value==='string'?value:JSON.stringify(value,null,2),{mode:0o600});
 const read=name=>JSON.parse(readFileSync(path.join(directory,name),'utf8'));
@@ -51,7 +54,7 @@ if(process.argv.includes('--prepare')){
  }
  visit('');
  const fingerprint=createHash('sha256').update(JSON.stringify(hashes.sort(([a],[b])=>a.localeCompare(b)))).digest('hex');
- const body={name:'ach',project:project.projectId,files,projectSettings:{framework:'nextjs',rootDirectory:'web',nodeVersion:'22.x',buildCommand:'npm run build',installCommand:'npm ci',outputDirectory:null},meta:{achProtocol:'4',achVault:config.vault,achCodeHash:config.code_hash,achWebSourceSha256:fingerprint,repositoryPushed:'false'}};
+ const body={name:'ach',project:project.projectId,files,projectSettings:{framework:'nextjs',rootDirectory:'web',nodeVersion:'22.x',buildCommand:'npm run build',installCommand:'npm ci',outputDirectory:null},meta:{achProtocol:'4',achVault:config.vault,achCodeHash:config.code_hash,achWebSourceSha256:fingerprint,repositoryPushed:String(state.repository_pushed)}};
  save('preview-body.json',body);save('production-body.json',{...body,target:'production'});
  save('bypass-create-body.json',{generate:{note:'ACH v4 interface review 20261110'}});
  state.prepared_at=new Date().toISOString();state.web_source_sha256=fingerprint;state.source_files=files.length;record();

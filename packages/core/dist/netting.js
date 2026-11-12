@@ -2,13 +2,13 @@
  * ACH — multilateral netting engine
  *
  * Given a set of gross obligations (A owes B, B owes C, C owes A), compute
- * the minimal set of transfers that settles everyone's net position.
+ * a small set of transfers that settles everyone's net position.
  *
  * This is the same core primitive banks have used for a century (and CLS
  * uses daily for FX, cutting funding needs by 90%+). We implement the
  * classic greedy matching: repeatedly pair the largest net debtor with the
  * largest net creditor until everyone is flat. This yields at most n-1
- * transfers for n participants — the theoretical minimum number of legs.
+ * transfers for n nonzero participants. It does not prove the global minimum.
  */
 export function computeNetPositions(obligations) {
     const nets = new Map();
@@ -28,11 +28,11 @@ export function minimizeTransfers(positions) {
     const debtors = positions
         .filter((p) => p.net < 0n)
         .map((p) => ({ accountId: p.accountId, remaining: -p.net }))
-        .sort((a, b) => (a.remaining > b.remaining ? -1 : 1));
+        .sort((a, b) => a.remaining === b.remaining ? a.accountId.localeCompare(b.accountId) : a.remaining > b.remaining ? -1 : 1);
     const creditors = positions
         .filter((p) => p.net > 0n)
         .map((p) => ({ accountId: p.accountId, remaining: p.net }))
-        .sort((a, b) => (a.remaining > b.remaining ? -1 : 1));
+        .sort((a, b) => a.remaining === b.remaining ? a.accountId.localeCompare(b.accountId) : a.remaining > b.remaining ? -1 : 1);
     const transfers = [];
     let i = 0;
     let j = 0;
@@ -61,6 +61,8 @@ export function clearObligations(obligations) {
         grossVolume,
         netVolume,
         compression: grossVolume > 0n ? Number(netVolume) / Number(grossVolume) : 0,
+        settlementRatio: grossVolume > 0n ? Number(netVolume) / Number(grossVolume) : 0,
+        volumeReduction: grossVolume > 0n ? 1 - Number(netVolume) / Number(grossVolume) : 0,
         obligationCount: obligations.length,
         obligationIds: obligations.map((o) => o.id),
     };

@@ -39,14 +39,18 @@ export interface Transfer {
 export interface ClearingResult {
     /** Net position of every participant with nonzero exposure */
     positions: NetPosition[];
-    /** Minimal set of transfers that settles all positions */
+    /** Greedy transfer pairing; no claim of a globally minimum leg count. */
     transfers: Transfer[];
     /** Sum of all gross obligations considered */
     grossVolume: bigint;
     /** Sum of all net transfers */
     netVolume: bigint;
-    /** 1 - netVolume/grossVolume (0..1). 1 = perfect compression */
+    /** Legacy settlement ratio, netVolume/grossVolume. Prefer the explicit fields. */
     compression: number;
+    /** Net settlement volume divided by gross invoice volume. */
+    settlementRatio: number;
+    /** Fraction of billed volume offset (1 - settlementRatio). */
+    volumeReduction: number;
     /** Number of obligations that went into this round */
     obligationCount: number;
     /** Ids of the obligations settled */

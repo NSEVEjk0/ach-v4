@@ -1,16 +1,17 @@
 {
   "protocol_version": 4,
-  "built_at": "2026-11-10T17:46:53.491Z",
+  "workflow_revision": 2,
+  "built_at": "2026-11-12T10:31:32.154Z",
   "artifacts": {
     "vault": {
       "path": "target/wasm32-unknown-unknown/release/ach_vault.wasm",
-      "bytes": 831280,
-      "sha256": "a101500fc8e5a0c4f482db20b237b5722f74e4f4461da244576cd0cf3e360b14"
+      "bytes": 1003092,
+      "sha256": "23043959af2ceb9ed557def2f8a24aa27e54ae8949679c0e0727069440bf2ee3"
     },
     "token": {
       "path": "target/wasm32-unknown-unknown/release/ach_test_usdc.wasm",
       "bytes": 244607,
-      "sha256": "47783906b1fdf16a45c1fd37c25938059b8887d58852664989b2ca13548cc095"
+      "sha256": "5864be3d2a4a14c743952d0d23f12d77e53a801e23bfdd6f0216b6012f258e31"
     },
     "worker": {
       "path": "target/wasm32-wasip2/release/ach-private-netting.wasm",

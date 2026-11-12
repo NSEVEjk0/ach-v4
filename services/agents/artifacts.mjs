@@ -9,8 +9,8 @@ export const EXAMPLE_DATA=Object.freeze([{label:'Research calls',value:120},{lab
 export function referencePacket(brief,data){return{kind:'references',title:brief.slice(0,100),summary:'A reference packet for the requested chart. The audit checks schema and source URLs; the supplied values remain the dataset owner’s responsibility.',references:SOURCE_CORPUS.map(r=>({...r})),data,source_date:'2026-11-10',data_label:'User-supplied structured data'};}
 export function auditPacket(data,references){
   const problems=[];if(!Array.isArray(data)||data.length<1||data.length>12)problems.push('Dataset must contain 1–12 rows.');
-  for(const row of data??[])if(!row||typeof row.label!=='string'||row.label.length>80||!Number.isFinite(row.value)||row.value<0||row.value>10000)problems.push('Invalid label or numeric value.');
-  if(!Array.isArray(references)||references.some(r=>!SOURCE_CORPUS.some(s=>s.url===r.url)))problems.push('Provenance does not match the known reference corpus.');
+  for(const row of Array.isArray(data)?data:[])if(!row||typeof row.label!=='string'||row.label.length>80||/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(row.label)||!Number.isFinite(row.value)||row.value<0||row.value>10000)problems.push('Invalid label or numeric value.');
+  if(!Array.isArray(references)||references.some(r=>!r||!SOURCE_CORPUS.some(s=>s.url===r.url)))problems.push('Provenance does not match the known reference corpus.');
   return{kind:'audit',valid:problems.length===0,checks:['bounded numeric schema','complete labels','known source URLs'],problems,rows:data?.length??0};
 }
 export function chartArtifact(brief,data,audit){
@@ -21,10 +21,23 @@ export function chartArtifact(brief,data,audit){
   return{kind:'chart',title:brief.slice(0,100),svg,data,audit:audit??null,sha256:v4Digest(svg)};
 }
 export function isSafeSvg(svg){
-  if(typeof svg!=='string'||svg.length>50_000||!/^<svg\b/.test(svg)||!/<\/svg>$/.test(svg)||/<!|<\?|url\s*\(/i.test(svg))return false;
+  if(typeof svg!=='string'||svg.length>50_000||!/^<svg\b/.test(svg)||!/<\/svg>$/.test(svg)||/<!|<\?|[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(svg))return false;
   const allowed=new Set(['svg','g','title','desc','rect','path','text','line','polyline','polygon','circle','ellipse']);
+  const attributes=new Set(['xmlns','width','height','viewBox','role','aria-labelledby','id','x','y','cx','cy','r','rx','ry','x1','x2','y1','y2','d','points','fill','stroke','stroke-width','font-size','font-family','transform']);
   const tags=svg.match(/<[^>]*>/g)??[];
-  return tags.every(tag=>{const match=/^<\/?([a-z]+)\b/i.exec(tag);return match&&allowed.has(match[1])&&!/\s(?:on[a-z]+|href|src|xlink:href|style)\s*=/i.test(tag);});
+  return tags.every(tag=>{
+    const match=/^<(\/?)([a-z]+)\b/.exec(tag);if(!match||!allowed.has(match[2]))return false;
+    let rest=tag.slice(match[0].length).replace(/\/?\s*>$/,'');if(match[1])return !rest.trim();
+    const seen=new Set();
+    while(rest.trim()){
+      const attribute=/^\s+([a-zA-Z][a-zA-Z0-9-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(rest);
+      if(!attribute||!attributes.has(attribute[1])||seen.has(attribute[1]))return false;
+      const name=attribute[1],value=attribute[2]??attribute[3];seen.add(name);rest=rest.slice(attribute[0].length);
+      if(name==='xmlns'&&value!=='http://www.w3.org/2000/svg')return false;
+      if(['fill','stroke'].includes(name)&&!/^(?:#[a-fA-F\d]{3,8}|[a-zA-Z]+)$/.test(value))return false;
+    }
+    return true;
+  });
 }
 export function validateArtifact(service,artifact){
   if(service==='references')return artifact?.kind==='references'&&auditPacket(artifact.data,artifact.references).valid;

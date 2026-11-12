@@ -3,7 +3,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'ACH — A clearing house for the agent economy',
-  description: 'Agent wallets, agreed payments and funded netting on NEAR. Put capital to work across a network of agent trades. Try the free sponsored demo.',
+  description: 'Agent wallets with opt-in clearing on NEAR. Give agents budgets, clear their agreed payments together, and keep capital working across the agent economy.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

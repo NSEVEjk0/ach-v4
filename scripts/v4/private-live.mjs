@@ -5,6 +5,8 @@ import {AchV4Client,V4NearTransport,canonicalV4,v4Digest,v4ChargeId,v4PrivateInv
 import {KeyPair,SignedTransaction}from '../../packages/client/dist/near.js';
 import {StateStore}from '../../services/lib/store.mjs';
 import {privatePath,manifestPath,outlayerPath}from '../../services/lib/paths.mjs';
+import {requireServiceLayout}from '../../services/lib/workflow.mjs';
+import {privateNegativeFixture}from './private-negative-fixture.mjs';
 
 const read=filename=>JSON.parse(readFileSync(filename,'utf8'));
 const save=(filename,value)=>writeFileSync(filename,JSON.stringify(value,null,2),{mode:0o600});
@@ -43,15 +45,15 @@ async function adversarial(config,owned,provider,until){
   const c=read(privatePath('coordinator-owner.json')),coordinator=new AchV4Client(config,new V4NearTransport(c.account_id,config.rpc_urls??config.rpc_url,c.secret_key,journal),'owner');
   const seed=v4Digest(owned.seed+':negative-private-fixture').slice(0,32),buyer=traders.get('research'),seller=traders.get('visual'),buyerId=buyer.client.transport.account_id,sellerId=seller.client.transport.account_id;
   const stateFile=privatePath('private-negative-state.json'),state=existsSync(stateFile)?read(stateFile):{};
+  if(state.before&&state.workflow_revision!==2)throw new Error('FRESH_PRIVATE_NEGATIVE_FIXTURE_REQUIRED');
+  state.workflow_revision=2;
   const before=state.before??await buyer.client.balance();
-  if(!state.baseline_established){
-   const prior=await journal.get('private-purchase:'+v4ChargeId(config,{buyer:buyerId,purchase_id:seed,terms_version:1}));
-   if(prior?.result?.value?.budget_charge)before.gross_purchase_budget_used=(BigInt(before.gross_purchase_budget_used)-BigInt(prior.result.value.budget_charge)).toString();
-   state.baseline_established=true;
-  }
   state.before=before;save(stateFile,state);
-  const auth=(await buyer.client.authorizePrivatePurchase({purchase_id:seed,terms_version:1,seller:sellerId,order_commitment:v4Digest('explicit-private-negative-test:'+seed)})).value;
-  const spec={id:'negative-'+seed,purchase_id:seed,terms_version:1,buyer:buyerId,seller:sellerId,asset:config.token,amount:'1',service:'chart',terms_hash:v4Digest('negative-test-no-service-invoice'),artifact_hash:v4Digest('negative-test-no-delivery'),ready_at_ms:Date.now()-1000,expires_at_ms:Date.now()+3600000},salt=v4Digest(seed+':salt'),commitment=v4PrivateInvoiceCommitment(config,spec,salt);
+  state.fixture??=privateNegativeFixture(config,{seed,buyer:buyerId,seller:sellerId,now:Date.now()});save(stateFile,state);
+  const{input,spec,salt}=state.fixture;let group=(await buyer.client.proposePurchaseGroup(input)).value;
+  for(const trader of [buyer,seller])if(group.status==='COLLECTING'&&!group.approvals.some(approval=>approval.account_id===trader.client.transport.account_id))group=(await trader.client.authorizePurchaseGroup(group,input.positions.find(position=>position.account_id===trader.client.transport.account_id).net)).value;
+  const auth=(await buyer.client.authorizePrivatePurchase({purchase_id:seed,terms_version:1,seller:sellerId,order_commitment:input.orders[0].order_commitment,deadline_ms:input.deadline_ms})).value;
+  const commitment=v4PrivateInvoiceCommitment(config,spec,salt);
   const wallets=await Promise.all([buyer.client.balance(),seller.client.balance()]);
   const contribution={spec,salt,signatures:[buyer,seller].map((trader,index)=>({account_id:trader.client.transport.account_id,key_epoch:wallets[index].policy.epoch,signature:Buffer.from(trader.key.sign(Buffer.from(commitment,'hex')).signature).toString('base64')}))};
   const encrypted=encryptV4Invoice(config,await coordinator.privateEncryptionKey(),contribution),tampered=structuredClone(encrypted),bytes=Buffer.from(tampered.ciphertext,'base64');bytes[40]^=1;tampered.ciphertext=bytes.toString('base64');
@@ -70,13 +72,19 @@ async function adversarial(config,owned,provider,until){
   if(expired.status==='PROCESSING')expired=(await coordinator.expirePrivateRequest(timeout.id)).value;
   assert.equal(expired.status,'EXPIRED','The live short-deadline request did not exercise expiry.');
   const cancellation={...auth};await owners.get('research').cancelPendingPrivatePurchase(cancellation);await owners.get('visual').cancelPendingPrivatePurchase(cancellation);await owners.get('visual').cancelPendingPrivatePurchase(cancellation);
+  // A funded group's cancellation flags preserve the commitment until expiry.
+  // Check the final block time before submitting its durable expiration call.
+  await until(async()=>Number(BigInt((await provider.viewBlock({finality:'final'})).header.timestamp_nanosec)/1000000n),time=>time>=input.deadline_ms,'negative-funded-group-expiry',910);
+  await owners.get('research').expirePurchaseGroup(input.id);
+  assert.equal((await buyer.client.privatePurchase(auth.charge_id)).status,'CANCELLED');
   const after=await buyer.client.balance();assert.equal(after.gross_purchase_budget_used,before.gross_purchase_budget_used);assert.equal(after.balance,before.balance);assert.equal(after.reserved,before.reserved);assert.equal((await coordinator.balance()).active_proposals,0);
   const denied=await journal.get('negative-unauthorized:'+seed),bad=await journal.get('private:'+request.id),timed=await journal.get('negative-timeout:'+seed);
-  return{kind:'explicit-negative-fixtures',unauthorized_request_tx:denied.tx_hash,tampered_request_tx:bad.tx_hash,tampered_state:failed.status,expired_request_tx:timed.tx_hash,expired_state:expired.status,pending_purchase_cancelled:true,permission_released_once:true,balances_unchanged:true};
+  return{kind:'explicit-negative-fixtures',workflow_revision:2,funding_group_id:input.id,unauthorized_request_tx:denied.tx_hash,tampered_request_tx:bad.tx_hash,tampered_state:failed.status,expired_request_tx:timed.tx_hash,expired_state:expired.status,pending_purchase_cancelled:true,funded_group_expired:true,permission_released_once:true,balances_unchanged:true};
  }finally{journal.close();}
 }
 
 export async function runPrivateLive({config,request,session,until,provider,backing}){
+ requireServiceLayout(config);
  assert.ok(config.private?.enabled,'The pinned private capability must be deployed first.');
  const owned=await session(privatePath('live-private-session.json'),'private'),token=owned.token,id=owned.seed,key=await request('/private-key',undefined,token);
  const participant=owned.session.participants.find(p=>p.kind==='research')??(await request('/snapshot',undefined,token)).session.participants.find(p=>p.kind==='research');

@@ -1,8 +1,9 @@
-import {v4NetPlan,v4Digest,V4_MAX_PRIVATE_INVOICES,V4BroadcastUnknown}from '../../packages/client/dist/v4.js';
+import {v4NetPlan,v4Digest,v4ChargeId,v4PurchaseGroupId,V4_MAX_PRIVATE_INVOICES,V4BroadcastUnknown}from '../../packages/client/dist/v4.js';
+import {clearingCandidates}from './selection.mjs';
 const jobError=error=>/^[A-Z_\d]+$/.test(error?.message??'')?error.message:'SERVICE_OR_CHAIN_UNAVAILABLE';
 const retryable=code=>/UNAVAILABLE|UNKNOWN|SYNCHRONIZATION|PRIVATE_PROCESSING/.test(code);
 export class Coordinator{
- constructor({store,config,getClient,getPrivateClient,agents,sponsor,clock=Date.now,snapshotTtlMs=0,jobTimeoutMs=600000}){Object.assign(this,{store,config,getClient,getPrivateClient,agents,sponsor,clock,snapshotTtlMs,jobTimeoutMs});this.running=new Map();this.lastSync=null;this.snapshots=new Map();this.snapshotTasks=new Map();}
+ constructor({store,config,getClient,getPrivateClient,agents,sponsor,clock=Date.now,snapshotTtlMs=0,jobTimeoutMs=900000}){Object.assign(this,{store,config,getClient,getPrivateClient,agents,sponsor,clock,snapshotTtlMs,jobTimeoutMs});this.running=new Map();this.lastSync=null;this.snapshots=new Map();this.snapshotTasks=new Map();}
  invalidateSnapshot(id){this.snapshots.delete(id);this.snapshotTasks.delete(id);}
  async readRound(client,id){
   const cached=await this.store.get('terminal-round:'+id);if(cached)return cached.round;
@@ -12,7 +13,7 @@ export class Coordinator{
  }
  recoverRoundIndex(session){
   const latest=this.store.session(session.id)??session;
-  const recorded=this.store.jobs(session.id).filter(j=>j.id.startsWith('clear-')&&typeof j.round_id==='string').map(j=>j.round_id);
+  const recorded=this.store.jobs(session.id).filter(j=>['clear-','funding-net-','run-'].some(prefix=>j.id.startsWith(prefix))&&typeof(j.round_id??j.result?.round_id)==='string').map(j=>j.round_id??j.result.round_id);
   const ids=[...new Set([...(latest.round_ids??[]),...(session.round_ids??[]),...recorded])];
   // The durable proposal intent precedes broadcast. A lost response must not
   // hide the round, including a READY or SETTLED round from an older runtime.
@@ -21,9 +22,17 @@ export class Coordinator{
  }
  async start(ipHash){return this.sponsor.createSession(ipHash);}
  authenticate(token){return this.store.authenticate(token,this.clock());}
+ setClearingPolicy(session,{mode}){
+  if(!['manual','automatic'].includes(mode))throw new Error('INVALID_CLEARING_POLICY');
+  const latest=this.store.session(session.id)??session;
+  const changed=latest.clearing_policy?.mode!==mode;
+  latest.clearing_policy={mode,updated_at_ms:this.clock()};this.store.updateSession(latest);session.clearing_policy=latest.clearing_policy;
+  if(changed)this.store.event(session.id,'clearing-policy',mode,{mode});this.invalidateSnapshot(session.id);return latest.clearing_policy;
+ }
  prepareRun(session,request){
   if(session.state&&session.state!=='READY')throw new Error('SESSION_PROVISIONING');
   if(!request||!/^[a-f\d-]{16,40}$/.test(request.request_id)||!['public','private'].includes(request.privacy??'public')||!['report','chart','auto'].includes(request.mode??'report'))throw new Error('INVALID_BRIEF');
+  if(Object.keys(request).some(k=>!['request_id','privacy','mode','budget','brief','data','sealed_brief'].includes(k)))throw new Error('INVALID_BRIEF');
   const budget=request.budget??'300000';
   if(!/^(0|[1-9]\d*)$/.test(budget)||BigInt(budget)>500000n)throw new Error('INVALID_BRIEF_BUDGET');
   if(BigInt(budget)<((request.mode??'report')==='report'?280000n:100000n))throw new Error('BRIEF_BUDGET_TOO_LOW');
@@ -31,23 +40,25 @@ export class Coordinator{
    if(!this.config.private?.enabled||!request.sealed_brief||request.brief!==undefined||request.data!==undefined)throw new Error('PRIVATE_MODE_UNAVAILABLE');
   }else if(typeof request.brief!=='string'||request.brief.trim().length<8||request.brief.length>800)throw new Error('INVALID_BRIEF');
   const id='run-'+request.request_id;
-  if(this.store.jobs(session.id).filter(j=>j.id.startsWith('run-')).length>=2&&!this.store.job(id))throw new Error('SESSION_JOB_QUOTA_REACHED');
-  const job=this.store.startJob(id,session.id,request.privacy==='private'?{...request,privacy:'encrypted'}:request);
+  const job=this.store.startBrief(id,session.id,request.privacy==='private'?{...request,privacy:'encrypted'}:request,{now:this.clock(),maxPlannerCallsPerDay:this.config.sponsor_limits?.maxPlannerCallsPerDay??2000});
   // Resume the same bounded operation, including a transient failure saved
   // by an earlier runtime. Its purchase IDs, approvals and quota stay fixed.
   const privateConfirmation=request.privacy==='private'&&this.store.jobs(session.id).some(j=>j.id.startsWith('receipt-')&&j.request&&['STARTED','WAITING'].includes(j.state));
   if(job.state==='FAILED'&&this.clock()<job.created_at_ms+this.jobTimeoutMs&&((job.error==='AI_PLAN_INVALID'&&(job.attempts??0)<3)||(retryable(job.error)&&((job.failures??0)<3||privateConfirmation)))){job.state='WAITING';delete job.error;this.store.saveJob(job);this.invalidateSnapshot(session.id);}
   return job;
  }
- prepareClear(session,request){
+ prepareClear(session,request,{automatic=false}={}){
   if(session.state&&session.state!=='READY')throw new Error('SESSION_PROVISIONING');
-  if(!request||!/^[a-f\d-]{16,40}$/.test(request.request_id)||!['public','private'].includes(request.privacy??'public')||!Array.isArray(request.invoice_ids)||request.invoice_ids.length<1||request.invoice_ids.length>48||new Set(request.invoice_ids).size!==request.invoice_ids.length)throw new Error('INVALID_CLEARING_REQUEST');
+  if(!request||!/^[a-f\d-]{16,40}$/.test(request.request_id)||!['public','private'].includes(request.privacy??'public')||!Array.isArray(request.invoice_ids)||request.invoice_ids.length<1||request.invoice_ids.length>48||request.invoice_ids.some(id=>typeof id!=='string'||!/^[a-zA-Z0-9_.-]{1,96}$/.test(id))||new Set(request.invoice_ids).size!==request.invoice_ids.length)throw new Error('INVALID_CLEARING_REQUEST');
   if(request.privacy==='private'&&request.invoice_ids.length>V4_MAX_PRIVATE_INVOICES)throw new Error('PRIVATE_INVOICE_LIMIT');
   const selected=request.selected_accounts;
   if(!Array.isArray(selected)||selected.length<2||selected.length>12||new Set(selected).size!==selected.length||selected.some(id=>!session.participants.some(p=>p.account_id===id)))throw new Error('SELECT_ROUND_PARTICIPANTS');
   const id='clear-'+request.request_id;
   if(this.store.jobs(session.id).filter(j=>j.id.startsWith('clear-')).length>=12&&!this.store.job(id))throw new Error('SESSION_CLEARING_QUOTA_REACHED');
-  return this.store.startJob(id,session.id,{...request,privacy:request.privacy==='private'?'encrypted':'public'});
+  const old=this.store.job(id),job=this.store.startJob(id,session.id,{...request,privacy:request.privacy==='private'?'encrypted':'public'});
+  if(!old){job.automatic=automatic;this.store.saveJob(job);}
+  if(!automatic)this.setClearingPolicy(session,{mode:'manual'});
+  return job;
  }
  async run(session,request){
   const id='run-'+request.request_id;
@@ -59,7 +70,7 @@ export class Coordinator{
    this.store.event(session.id,'brief-started',id,{mode:request.mode,private:request.privacy==='private'});
    try{
     const result=await this.agents.runBrief(session,request);job={...job,state:'COMPLETE',result};this.store.saveJob(job);this.invalidateSnapshot(session.id);
-    const latest=this.store.session(session.id)??session;latest.last_job_id=id;this.store.updateSession(latest);this.store.event(session.id,'brief-completed',id,{mode:request.mode,private:request.privacy==='private'});return result;
+    const latest=this.store.session(session.id)??session;latest.last_job_id=id;this.store.updateSession(latest);if(result.round_id)this.appendRound(latest,result.round_id);this.store.event(session.id,'brief-completed',id,{mode:request.mode,private:request.privacy==='private'});return result;
    }catch(error){const code=jobError(error),processing=code==='PRIVATE_PROCESSING',failures=(job.failures??0)+(processing?0:1),withinDeadline=this.clock()<job.created_at_ms+this.jobTimeoutMs;job={...job,failures,state:withinDeadline&&retryable(code)&&(processing||failures<3)?'WAITING':'FAILED',error:code,retry_at_ms:this.clock()+10000};this.store.saveJob(job);this.invalidateSnapshot(session.id);throw error;}
   })().finally(()=>this.running.delete(id));this.running.set(id,task);return task;
  }
@@ -69,6 +80,36 @@ export class Coordinator{
   const responses=await Promise.all(session.participants.map(p=>this.agents.privateSummary(p.kind,session))),seen=new Map();
   for(const response of responses)for(const i of response.invoices){const prior=seen.get(i.nullifier);if(prior&&prior.commitment!==i.commitment)throw new Error('PRIVATE_CONTRIBUTION_CONFLICT');seen.set(i.nullifier,i);}
   const invoices=[...seen.values()];await this.store.put({id:'private-index:'+session.id,invoices,at_ms:this.clock()});return invoices;
+ }
+ async preparePrivateGroup(session,{group_id,envelopes}){
+  if(!this.config.private?.enabled||!this.getPrivateClient)throw new Error('PRIVATE_MODE_UNAVAILABLE');
+  const client=await this.getClient(),group=await client.purchaseGroup(group_id);
+  if(group.input.positions.some(p=>!session.participants.some(a=>a.account_id===p.account_id))||!group.input.private)throw new Error('SESSION_PURCHASE_GROUP_REQUIRED');
+  if(['READY','SETTLED'].includes(group.status)){this.appendRound(session,group.round_id);return{ready:true,round_id:group.round_id};}
+  if(group.status!=='FUNDED'||group.input.deadline_ms<=this.clock())throw new Error('PURCHASE_GROUP_NOT_DELIVERABLE');
+  const expected=group.input.orders.map(o=>v4ChargeId(this.config,o)).sort();
+  if(!Array.isArray(envelopes)||envelopes.length!==expected.length||JSON.stringify([...new Set(envelopes.map(e=>e.nullifier))].sort())!==JSON.stringify(expected))throw new Error('FUNDED_GROUP_MUST_CLEAR_TOGETHER');
+  const key='funding-net-'+group_id;
+  let job=this.store.startJob(key,session.id,{group_id,envelopes,privacy:'encrypted'});
+  if(this.running.has(key))return this.running.get(key);
+  const task=(async()=>{
+   let pending=job.request?await client.privateRequest(job.request.id):null;
+   if(pending?.status==='PROCESSING'&&pending.deadline_ms<=this.clock()){pending=(await client.expirePrivateRequest(pending.id)).value;}
+   if(pending&&['FAILED','EXPIRED','INVALID_OUTPUT'].includes(pending.status)){job.attempt=(job.attempt??0)+1;delete job.request;pending=null;}
+   if(!job.request){
+    if((job.attempt??0)>=3)throw new Error('PRIVATE_SPONSOR_QUOTA_REACHED');
+    const deadline_ms=Math.min(this.clock()+300000,group.input.deadline_ms);
+    job.request={id:group_id+'-net-'+(job.attempt??0),funding_group_id:group_id,profile:this.config.private.profile,members:group.input.positions.map(p=>p.account_id),deadline_ms,encrypted_invoices:envelopes};
+    if(!this.store.job('tee-'+job.request.id)&&this.store.jobs(session.id).filter(j=>j.id.startsWith('tee-')).length>=12)throw new Error('PRIVATE_SPONSOR_QUOTA_REACHED');
+    job.request.disclosure_signatures=await Promise.all(job.request.members.map(id=>this.agents.disclosePrivate(session.participants.find(p=>p.account_id===id).kind,session,job.request)));
+    this.store.startJob('tee-'+job.request.id,session.id,{privacy:'encrypted',...job.request});
+    job.round_id=job.request.id;this.store.saveJob(job);
+   }
+   if(!pending){await(await this.getPrivateClient()).requestPrivateRound(job.request);pending=await client.privateRequest(job.request.id);}
+   if(pending?.status!=='VERIFIED'){job.state='WAITING';this.store.saveJob(job);return{ready:false,state:'WAITING'};}
+   const round=await client.round(job.request.id);if(!['READY','SETTLED'].includes(round.status))throw new Error('PAYMENT_COMMITMENT_REQUIRED');
+   this.appendRound(session,round.input.id);job.state='COMPLETE';job.result={ready:true,round_id:round.input.id};this.store.saveJob(job);this.invalidateSnapshot(session.id);return job.result;
+  })().finally(()=>this.running.delete(key));this.running.set(key,task);return task;
  }
  async verifyPrivateReceipt(session,{envelope,parties}){
   if(!this.config.private?.enabled||!this.getPrivateClient)throw new Error('PRIVATE_MODE_UNAVAILABLE');
@@ -80,7 +121,7 @@ export class Coordinator{
   const task=(async()=>{
    const client=await this.getClient();
    const already=await client.privateInvoice(envelope.nullifier);
-   if(already){if(already.charge.commitment!==envelope.commitment)throw new Error('PRIVATE_RECEIPT_COMMITMENT_MISMATCH');job.state='COMPLETE';job.result={verified:true,nullifier:envelope.nullifier};this.store.saveJob(job);return job.result;}
+   if(already){if(already.charge.commitment!==envelope.commitment)throw new Error('PRIVATE_RECEIPT_COMMITMENT_MISMATCH');if(!['ACCEPTED','READY','SETTLED'].includes(already.status))throw new Error('PRIVATE_RECEIPT_EXPIRED');job.state='COMPLETE';job.result={verified:true,nullifier:envelope.nullifier};this.store.saveJob(job);return job.result;}
    let pending=job.request?await client.privateRequest(job.request.id):null;
    if(pending?.status==='PROCESSING'&&pending.deadline_ms<=this.clock()){pending=(await client.expirePrivateRequest(pending.id)).value;}
    if(pending&&['FAILED','EXPIRED','INVALID_OUTPUT'].includes(pending.status)){job.attempt=(job.attempt??0)+1;delete job.request;pending=null;}
@@ -101,7 +142,7 @@ export class Coordinator{
     }
    }
    const registered=await client.privateInvoice(envelope.nullifier);
-   if(registered&&registered.charge.commitment===envelope.commitment){job.state='COMPLETE';job.result={verified:true,nullifier:envelope.nullifier};this.store.saveJob(job);this.store.event(session.id,'private-receipt-verified',envelope.nullifier,{private:true});return job.result;}
+   if(registered&&registered.charge.commitment===envelope.commitment){if(!['ACCEPTED','READY','SETTLED'].includes(registered.status))throw new Error('PRIVATE_RECEIPT_EXPIRED');job.state='COMPLETE';job.result={verified:true,nullifier:envelope.nullifier};this.store.saveJob(job);this.store.event(session.id,'private-receipt-verified',envelope.nullifier,{private:true});return job.result;}
    job.state='WAITING';this.store.saveJob(job);return{verified:false,state:'WAITING'};
   })().finally(()=>this.running.delete(key));this.running.set(key,task);return task;
  }
@@ -115,9 +156,10 @@ export class Coordinator{
   this.snapshotTasks.set(session.id,task);return task;
  }
  async readSnapshot(session){
-  const deployment={protocol_version:4,network:this.config.network,vault:this.config.vault,token:this.config.token,decimals:6,code_hash:this.config.code_hash,rpc_url:this.config.rpc_url,rpc_urls:this.config.rpc_urls??[this.config.rpc_url]};
-  const basic={session:{id:session.id,created_at_ms:session.created_at_ms,participants:session.participants,initial_balance:'1000000',expires_at_ms:session.expires_at_ms,state:session.state??'READY',testnet:true},deployment,privacy:{enabled:Boolean(this.config.private?.enabled),verified:Boolean(this.config.private?.private_round_verified),worker_hash:this.config.private?.hash,reason:this.config.private?.enabled?'Invoice contents and deliverables are encrypted for the participating agents. Participants, net movements and timing remain public.':'Private computation is being connected.'},intents:{enabled:Boolean(this.config.intents?.dry_quotes_enabled),network:'mainnet',routes_exercised:Boolean(this.config.intents?.mainnet_routes_exercised),reason:'Funding and payouts route through owner-controlled accounts. The free session uses test funds.'}};
-  if(session.state&&session.state!=='READY')return{...basic,balances:[],invoices:[],private_invoices:[],rounds:[],jobs:[],events:this.store.events(session.id),last_sync_at_ms:null,financial_data_available:false};
+  const deployment={protocol_version:4,workflow_revision:this.config.workflow_revision,network:this.config.network,vault:this.config.vault,token:this.config.token,decimals:6,code_hash:this.config.code_hash,rpc_url:this.config.rpc_url,rpc_urls:this.config.rpc_urls??[this.config.rpc_url]};
+  const eventPage=this.store.eventPage(session.id);
+  const basic={session:{id:session.id,created_at_ms:session.created_at_ms,participants:session.participants,initial_balance:'1000000',expires_at_ms:session.expires_at_ms,state:session.state??'READY',testnet:true,setup_progress:session.setup_progress??null,clearing_policy:session.clearing_policy??{mode:'automatic'}},deployment,event_page:{next_cursor:eventPage.next_cursor},privacy:{enabled:Boolean(this.config.private?.enabled),verified:Boolean(this.config.private?.private_round_verified),worker_hash:this.config.private?.hash,reason:this.config.private?.enabled?'Invoice contents and deliverables are encrypted for the participating agents. Participants, net movements and timing remain public.':'Private computation is being connected.'},intents:{enabled:Boolean(this.config.intents?.dry_quotes_enabled),network:'mainnet',routes_exercised:Boolean(this.config.intents?.mainnet_routes_exercised),reason:'Funding and payouts route through owner-controlled accounts. The free session uses test funds.'}};
+  if(session.state&&session.state!=='READY')return{...basic,balances:[],invoices:[],private_invoices:[],rounds:[],jobs:[],events:eventPage.items,last_sync_at_ms:null,financial_data_available:false};
   this.recoverRoundIndex(session);
   const client=await this.getClient(),seen=new Map();
   const [balances,externalBalances,recoveryWithdrawals]=await Promise.all([
@@ -126,6 +168,12 @@ export class Coordinator{
    Promise.all(session.participants.map(p=>client.recoveryWithdrawal(p.account_id))),
   ]);
   for(const p of session.participants){let cursor=0;do{const page=await client.listInvoices(cursor,100,p.account_id);for(const i of page.items)seen.set(i.spec.id,i);cursor=page.next_cursor;}while(cursor!==null);}
+  const fundingGroups=[],research=session.participants.find(p=>p.kind==='research');
+  if(research&&client.purchaseGroup)for(const job of this.store.jobs(session.id).filter(j=>j.id.startsWith('run-'))){
+   const id=v4PurchaseGroupId(this.config,research.account_id,job.payload.request_id);
+   try{const group=await client.purchaseGroup(id);fundingGroups.push(group);if(group.round_id)this.appendRound(session,group.round_id);}
+   catch(error){if(!/PURCHASE_GROUP_NOT_FOUND/.test(error.message))throw error;}
+  }
   const rounds=[];for(const id of session.round_ids??[]){
    try{rounds.push(await this.readRound(client,id));}
    catch(error){
@@ -133,20 +181,22 @@ export class Coordinator{
     const pending=await client.privateRequest(id);
     // A durable local intent can precede successful inclusion. Keep its job
     // visible, without inventing a financial round or failing other reads.
-    if(!pending&&!this.store.jobs(session.id).some(j=>j.id.startsWith('clear-')&&j.round_id===id))throw new Error('ROUND_SYNCHRONIZATION_UNAVAILABLE');
+    if(!pending&&!this.store.jobs(session.id).some(j=>['clear-','funding-net-'].some(prefix=>j.id.startsWith(prefix))&&j.round_id===id))throw new Error('ROUND_SYNCHRONIZATION_UNAVAILABLE');
    }
   }
   let privateInvoices=[],privateDataAvailable=true;
   try{privateInvoices=await this.privateInvoices(session);}catch{privateDataAvailable=false;privateInvoices=(await this.store.get('private-index:'+session.id))?.invoices??[];}
   const jobs=this.store.jobs(session.id).filter(j=>j.id.startsWith('run-'));
+  const activity=[];let historyDataAvailable=true;
+  if(client.listActivity)try{for(const p of session.participants){let cursor=0;do{const page=await client.listActivity(p.account_id,cursor,100);activity.push(...page.items.map(item=>({...item,account_id:p.account_id})));cursor=page.next_cursor;}while(cursor!==null);}}catch{historyDataAvailable=false;}
   this.lastSync=this.clock();
   return{...basic,balances,external_balances:externalBalances,recovery_withdrawals:recoveryWithdrawals,invoices:[...seen.values()].sort((a,b)=>a.sequence-b.sequence),private_invoices:privateInvoices.map(({envelope,...i})=>i),private_data_available:privateDataAvailable,rounds,
    jobs:jobs.map(j=>({id:j.id,state:j.state,result:j.result?.kind==='encrypted-result'?null:j.result??null,sealed_result:j.result?.kind==='encrypted-result'?j.result:null,error:j.error??null})),
-   pending_actions:this.store.jobs(session.id).filter(j=>j.id.startsWith('clear-')&&j.state!=='COMPLETE').map(j=>({id:j.id,state:j.state,reason:j.reason??j.error??null,round_id:j.round_id??null})),
-   events:this.store.events(session.id),last_sync_at_ms:this.lastSync,financial_data_available:true};
+   pending_actions:this.store.jobs(session.id).filter(j=>j.id.startsWith('clear-')&&j.state!=='COMPLETE').map(j=>({id:j.id,state:j.state,reason:j.reason??j.error??null,round_id:j.round_id??null,private:j.payload.privacy==='encrypted'})),
+   funding_groups:fundingGroups,account_activity:activity,owner_operations:this.store.ownerOperations(session.participants.map(p=>p.account_id)),history_data_available:historyDataAvailable,events:eventPage.items,last_sync_at_ms:this.lastSync,financial_data_available:true};
  }
- async clear(session,request){
-  const prepared=this.prepareClear(session,request);
+ async clear(session,request,{automatic=false}={}){
+  const prepared=this.prepareClear(session,request,{automatic});
   if(prepared.state==='COMPLETE')return prepared.result;
   if(prepared.state==='FAILED')throw new Error(prepared.error??'CLEARING_FAILED');
   const key='clear-'+request.request_id;if(this.running.has(key))return this.running.get(key);
@@ -164,7 +214,8 @@ export class Coordinator{
   let round;
   if(job.round_id){
    this.appendRound(session,job.round_id);
-   try{round=await client.round(job.round_id);}catch{
+   try{round=await client.round(job.round_id);}catch(error){
+    if(!/ROUND_NOT_FOUND/.test(error.message))throw error;
     if(privacy!=='private'){round=(await client.proposeRound(job.round_id,invoice_ids,job.deadline_ms)).value;}
     else{
     let req=await client.privateRequest(job.round_id);
@@ -182,7 +233,15 @@ export class Coordinator{
    if(privacy==='private'){
     if(!this.config.private?.enabled||!this.getPrivateClient)throw new Error('PRIVATE_MODE_UNAVAILABLE');
     const all=await this.privateInvoices(session),included=invoice_ids.map(id=>all.find(i=>i.nullifier===id));
-    if(included.some(i=>!i||i.status!=='ACCEPTED'||i.parties.some(p=>!selected.has(p))))throw new Error('SELECTED_INVOICE_SCOPE_MISMATCH');
+    if(included.some(i=>!i||i.parties.some(p=>!selected.has(p))))throw new Error('SELECTED_INVOICE_SCOPE_MISMATCH');
+    const committed=[...new Set(included.filter(i=>['READY','SETTLED'].includes(i.status)&&i.round_id).map(i=>i.round_id))];
+    if(committed.length){
+     if(committed.length!==1)throw new Error('SELECT_ONE_COMMITTED_GROUP');
+     const r=await client.round(committed[0]);
+     if(JSON.stringify([...r.input.invoice_ids].sort())!==JSON.stringify([...invoice_ids].sort())||r.input.positions.some(p=>!selected.has(p.account_id)))throw new Error('FUNDED_GROUP_MUST_CLEAR_TOGETHER');
+     job.round_id=r.input.id;this.store.saveJob(job);this.appendRound(session,r.input.id);round=r;
+    }else{
+    if(included.some(i=>i.status!=='ACCEPTED'))throw new Error('SELECTED_INVOICE_SCOPE_MISMATCH');
     const members=[...new Set(included.flatMap(i=>i.parties))];
     job.round_id='private-'+request_id+(job.attempt?'-'+job.attempt:'');
     const executionId='tee-'+job.round_id;
@@ -195,13 +254,22 @@ export class Coordinator{
     const req=await client.privateRequest(job.round_id);
     if(req?.status!=='VERIFIED'){job.state='WAITING';job.reason='PRIVATE_PROCESSING';this.store.saveJob(job);return{state:'WAITING',round:null,reason:job.reason};}
     round=await client.round(job.round_id);
+    }
    }else{
     const invoices=await Promise.all(invoice_ids.map(id=>client.invoice(id)));
+   const committed=[...new Set(invoices.filter(i=>['READY','SETTLED'].includes(i.status)&&i.round_id).map(i=>i.round_id))];
+   if(committed.length){
+    if(committed.length!==1)throw new Error('SELECT_ONE_COMMITTED_GROUP');
+    const r=await client.round(committed[0]);
+    if(JSON.stringify([...r.input.invoice_ids].sort())!==JSON.stringify([...invoice_ids].sort())||r.input.positions.some(p=>!selected.has(p.account_id)))throw new Error('FUNDED_GROUP_MUST_CLEAR_TOGETHER');
+    job.round_id=r.input.id;this.store.saveJob(job);this.appendRound(session,r.input.id);round=r;
+   }else{
     if(invoices.some(i=>i.status!=='ACCEPTED'||!selected.has(i.spec.buyer)||!selected.has(i.spec.seller)))throw new Error('SELECTED_INVOICE_SCOPE_MISMATCH');
     const plan=v4NetPlan(invoices.map(i=>i.spec));
     for(const position of plan.positions){const wallet=await client.balance(position.account_id);if(BigInt(position.net)<0n&&-BigInt(position.net)>BigInt(wallet.available)){job.state='WAITING';job.reason='INSUFFICIENT_AVAILABLE_BALANCE';this.store.saveJob(job);return{state:'WAITING',round:null,reason:job.reason};}}
     job.round_id='round-'+request_id+(job.attempt?'-'+job.attempt:'');this.store.saveJob(job);this.appendRound(session,job.round_id);
     round=(await client.proposeRound(job.round_id,invoice_ids,job.deadline_ms)).value;this.appendRound(session,round.input.id);
+   }
    }
   }
   for(const position of round.input.positions){
@@ -211,45 +279,58 @@ export class Coordinator{
    catch(error){job.state='WAITING';job.reason=/^[A-Z_\d]+$/.test(error.message)?error.message:'PARTICIPANT_UNAVAILABLE';this.store.saveJob(job);return{state:'WAITING',round,reason:job.reason};}
   }
   if(round.status==='READY'){
-   const result=await client.settleRound(round);round=result.value;this.store.event(session.id,'round-settled',round.input.id,{tx_hash:result.tx_hash,evidence:result.evidence,net_settlement_volume:round.net_settlement_volume,private:round.input.private});
+   const result=await client.settleRound(round);round=result.value;this.recordSettlement(session,result);
   }
   job={...job,state:round.status==='SETTLED'?'COMPLETE':'WAITING',result:{round}};this.store.saveJob(job);return{round};
  }
+ recordSettlement(session,result){const round=result.value;this.store.eventOnce(session.id,'round-settled',round.input.id,{tx_hash:result.tx_hash,evidence:result.evidence,net_settlement_volume:round.net_settlement_volume,private:round.input.private});}
  async tick(){
   for(const session of this.store.pendingSessions()){
-   if(session.state&&session.state!=='READY')continue;const client=await this.getClient();
-   this.recoverRoundIndex(session);
-   for(const id of session.round_ids??[])try{
-    if(await this.store.get('terminal-round:'+id))continue;
-    const r=await this.readRound(client,id);
-    if(r.status==='READY'){const settled=await client.settleRound(r);await this.store.put({id:'terminal-round:'+id,round:settled.value});this.invalidateSnapshot(session.id);}
-    else if(r.status==='COLLECTING'&&r.input.deadline_ms<=this.clock()){const expired=await client.expireRound(id);await this.store.put({id:'terminal-round:'+id,round:expired.value});this.invalidateSnapshot(session.id);}
-   }catch{}
+   if(session.state&&session.state!=='READY')continue;
+   const client=await this.getClient();
    for(const job of this.store.jobs(session.id)){
     if(!['WAITING','STARTED'].includes(job.state)||job.retry_at_ms&&job.retry_at_ms>this.clock())continue;
+    if(job.id.startsWith('clear-')&&this.clock()>=job.created_at_ms+this.jobTimeoutMs){
+     if(job.round_id){
+      let round;
+      try{round=await client.round(job.round_id);}catch(error){if(!/ROUND_NOT_FOUND/.test(error.message))continue;}
+      // Finish an irrevocable payment even after its UI request times out.
+      // Never create a replacement group or another sponsored execution.
+      if(round?.status==='READY'){try{const settled=await client.settleRound(round);this.recordSettlement(session,settled);round=settled.value;}catch{continue;}}
+      if(round?.status==='SETTLED'){job.state='COMPLETE';job.result={round};this.store.saveJob(job);this.invalidateSnapshot(session.id);continue;}
+      if(round?.status==='COLLECTING'){try{await client.expireRound(round.input.id);}catch{continue;}}
+      else if(!round){try{const pending=await client.privateRequest(job.round_id);if(pending?.status==='PROCESSING'){if(pending.deadline_ms>this.clock())continue;await client.expirePrivateRequest(pending.id);}}catch{continue;}}
+     }
+     job.state='FAILED';job.error='CLEARING_REQUEST_EXPIRED';this.store.saveJob(job);this.invalidateSnapshot(session.id);continue;
+    }
     if(job.id.startsWith('run-')&&!this.running.has(job.id)){const r={...job.payload,privacy:job.payload.privacy==='encrypted'?'private':job.payload.privacy};void this.run(session,r).catch(()=>{});}
-    else if(job.id.startsWith('clear-')&&!this.running.has(job.id)){const r={...job.payload,privacy:job.payload.privacy==='encrypted'?'private':job.payload.privacy};await this.clear(session,r).catch(()=>{});}
+    else if(job.id.startsWith('clear-')&&!this.running.has(job.id)&&(!job.automatic||(this.store.session(session.id)?.clearing_policy?.mode??'automatic')==='automatic')){const r={...job.payload,privacy:job.payload.privacy==='encrypted'?'private':job.payload.privacy};await this.clear(session,r,{automatic:Boolean(job.automatic)}).catch(()=>{});}
    }
    const data=await this.snapshot(this.store.session(session.id)??session);
-   const accepted=data.invoices.filter(i=>i.status==='ACCEPTED'&&this.clock()-i.spec.ready_at_ms>=30000);
-   const consenting=new Set(data.balances.filter(b=>b.policy&&!b.policy.revoked&&b.policy.expires_at_ms>this.clock()+300000).map(b=>b.account_id));
-   const eligible=accepted.filter(i=>consenting.has(i.spec.buyer)&&consenting.has(i.spec.seller)).slice(0,48);
-   if(eligible.length){
-    const candidates=[eligible,...eligible.map(i=>[i])];
-    for(const invoices of candidates){
-     const plan=v4NetPlan(invoices.map(i=>i.spec));
-     if(plan.positions.some(p=>BigInt(p.net)<0n&&-BigInt(p.net)>BigInt(data.balances.find(b=>b.account_id===p.account_id)?.available??'0')))continue;
-     const request_id=v4Digest(session.id+':'+invoices.map(i=>i.spec.id).sort().join(':')).slice(0,32);
-     const result=await this.clear(session,{request_id,selected_accounts:plan.positions.map(p=>p.account_id),invoice_ids:invoices.map(i=>i.spec.id)}).catch(()=>null);
-     if(result?.round?.status==='SETTLED')break;
-    }
+   const automatic=()=> (this.store.session(session.id)?.clearing_policy?.mode??'automatic')==='automatic';
+   for(const group of data.funding_groups??[])if(['COLLECTING','FUNDED'].includes(group.status)&&group.input.deadline_ms<=this.clock()){
+    try{await client.expirePurchaseGroup(group.input.id);this.store.eventOnce(session.id,'purchase-group-expired',group.input.id,{private:group.input.private});this.invalidateSnapshot(session.id);}catch{}
    }
+   for(const round of data.rounds)try{
+    if(round.status==='READY'&&automatic()){const settled=await client.settleRound(round);this.recordSettlement(session,settled);await this.store.put({id:'terminal-round:'+round.input.id,round:settled.value});this.invalidateSnapshot(session.id);}
+    else if(round.status==='COLLECTING'&&round.input.deadline_ms<=this.clock()){const expired=await client.expireRound(round.input.id);await this.store.put({id:'terminal-round:'+round.input.id,round:expired.value});this.invalidateSnapshot(session.id);}
+   }catch{}
    if(data.private_data_available)for(const receipt of data.private_invoices.filter(i=>i.status==='SIGNED')){
     const encrypted=(await this.store.get('private-index:'+session.id))?.invoices.find(i=>i.nullifier===receipt.nullifier);
     if(encrypted)await this.verifyPrivateReceipt(session,{envelope:encrypted.envelope,parties:encrypted.parties}).catch(()=>{});
    }
-   const privateEligible=data.private_invoices.filter(i=>i.status==='ACCEPTED'&&this.clock()-i.ready_at_ms>=30000&&i.parties.every(p=>consenting.has(p)));
-   if(privateEligible.length){const included=privateEligible.slice(0,V4_MAX_PRIVATE_INVOICES);const request_id=v4Digest(session.id+':private:'+included.map(i=>i.nullifier).sort().join(':')).slice(0,32);await this.clear(session,{request_id,privacy:'private',selected_accounts:[...consenting],invoice_ids:included.map(i=>i.nullifier)}).catch(()=>{});}
+   if(!automatic())continue;
+   const protectedIds=new Set(this.store.jobs(session.id).filter(j=>j.id.startsWith('clear-')&&['STARTED','WAITING'].includes(j.state)).flatMap(j=>j.payload.invoice_ids));
+   const consenting=new Set(data.balances.filter(b=>b.policy&&!b.policy.revoked&&b.policy.expires_at_ms>this.clock()+300000).map(b=>b.account_id));
+   const eligible=data.invoices.filter(i=>i.status==='ACCEPTED'&&!i.funding_group_id&&!protectedIds.has(i.spec.id)&&this.clock()-i.spec.ready_at_ms>=30000&&consenting.has(i.spec.buyer)&&consenting.has(i.spec.seller));
+   for(const {invoices,plan}of clearingCandidates(eligible,data.balances)){
+    if(!automatic())break;
+    const request_id=v4Digest(session.id+':'+invoices.map(i=>i.spec.id).sort().join(':')).slice(0,32);
+    const result=await this.clear(session,{request_id,selected_accounts:plan.positions.map(p=>p.account_id),invoice_ids:invoices.map(i=>i.spec.id)},{automatic:true}).catch(()=>null);
+    if(result?.round?.status==='SETTLED'||this.store.job('clear-'+request_id)?.state==='WAITING')break;
+   }
+   const privateEligible=data.private_invoices.filter(i=>i.status==='ACCEPTED'&&!i.funding_group_id&&!protectedIds.has(i.nullifier)&&this.clock()-i.ready_at_ms>=30000&&i.parties.every(p=>consenting.has(p)));
+   if(privateEligible.length&&automatic()){const included=privateEligible.slice(0,V4_MAX_PRIVATE_INVOICES);const request_id=v4Digest(session.id+':private:'+included.map(i=>i.nullifier).sort().join(':')).slice(0,32);await this.clear(session,{request_id,privacy:'private',selected_accounts:[...consenting],invoice_ids:included.map(i=>i.nullifier)},{automatic:true}).catch(()=>{});}
   }
  }
 }

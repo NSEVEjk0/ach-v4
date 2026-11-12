@@ -1,4 +1,5 @@
 /** Intents operates at the edge of ACH. Quotes never credit the vault. */
+import {routeJson} from './http.js';
 export const INTENTS_STATUS = ["KNOWN_DEPOSIT_TX", "PENDING_DEPOSIT", "INCOMPLETE_DEPOSIT", "PROCESSING", "SUCCESS", "REFUNDED", "FAILED"] as const;
 export type IntentsStatus = typeof INTENTS_STATUS[number];
 export type RouteState = "QUOTED" | "WITHDRAWING" | "AWAITING_DEPOSIT" | "RECONCILING_SOURCE" | "INCOMPLETE_DEPOSIT" | "PROCESSING" | "AWAITING_RECEIPT" | "RECEIVED" | "REFUNDED" | "FAILED" | "EXPIRED";
@@ -14,7 +15,7 @@ export interface StatusResponse { status: string; updatedAt: string; quoteRespon
 export interface DestinationReceipt { chain: string; asset: string; recipient: string; amount: string; tx_hash: string; confirmed: boolean }
 export interface Route {
   id: string; request: QuoteRequest; response: QuoteResponse; state: RouteState; raw_status?: string;
-  known_source_tx?: string; receipt?: DestinationReceipt; checked_at?: string; approval_hash?: string; destination_chain?: string;
+  known_source_tx?: string; receipt?: DestinationReceipt; checked_at?: string; approval_hash?: string; destination_chain?: string; destination_contract?: string;
 }
 const units = (s: string) => { if (!/^(0|[1-9]\d*)$/.test(s) || s.length > 78) throw new Error("INVALID_ROUTE_AMOUNT"); return BigInt(s); };
 export function validateQuoteRequest(r: QuoteRequest, now = Date.now()): void {
@@ -35,6 +36,7 @@ export function assertQuoteMatches(request: QuoteRequest, response: QuoteRespons
   if (request.dry && response.quote.depositAddress) throw new Error("DRY_QUOTE_DEPOSIT_REFUSED");
   if (!request.dry && (!response.quote.depositAddress || !response.quote.deadline)) throw new Error("INCOMPLETE_LIVE_QUOTE");
   if (!request.dry && (!Number.isFinite(Date.parse(response.quote.deadline!)) || Date.parse(response.quote.deadline!) > Date.parse(request.deadline))) throw new Error("QUOTE_DEADLINE_MISMATCH");
+  if (request.depositMode === 'SIMPLE' && response.quote.depositMemo || !request.dry && request.depositMode === 'MEMO' && !response.quote.depositMemo) throw new Error('QUOTE_DEPOSIT_MODE_MISMATCH');
 }
 export function routeState(status: string): RouteState {
   switch (status) {
@@ -50,13 +52,14 @@ export function routeState(status: string): RouteState {
 }
 export function reconcileRoute(route: Route, status: StatusResponse, receipt?: DestinationReceipt): Route {
   const quoted = route.response.quote;
-  if (status.quoteResponse.quote.depositAddress !== quoted.depositAddress || status.quoteResponse.quote.depositMemo !== quoted.depositMemo) throw new Error("ROUTE_STATUS_IDENTITY_MISMATCH");
+  if (status.quoteResponse.correlationId !== route.response.correlationId || ["depositAddress", "depositMemo", "amountIn", "amountOut", "minAmountOut", "deadline"].some(field => status.quoteResponse.quote[field as keyof QuoteResponse['quote']] !== quoted[field as keyof QuoteResponse['quote']])) throw new Error("ROUTE_STATUS_IDENTITY_MISMATCH");
   assertQuoteMatches(route.request, status.quoteResponse);
   const next: Route = { ...route, raw_status: status.status, state: routeState(status.status), checked_at: status.updatedAt };
   if (route.state === "RECEIVED" || route.state === "REFUNDED") {
     if (status.status !== (route.state === "RECEIVED" ? "SUCCESS" : "REFUNDED")) throw new Error("TERMINAL_ROUTE_STATE_CONFLICT");
     return route;
   }
+  if (route.state === 'FAILED' && !['FAILED', 'REFUNDED'].includes(status.status)) throw new Error('TERMINAL_ROUTE_STATE_CONFLICT');
   if (status.status === "SUCCESS" && receipt) {
     if (!route.destination_chain || receipt.chain !== route.destination_chain || !receipt.confirmed || !receipt.tx_hash || receipt.recipient !== route.request.recipient || receipt.asset !== route.request.destinationAsset || units(receipt.amount) < units(quoted.minAmountOut)) throw new Error("DESTINATION_RECEIPT_MISMATCH");
     const txs = status.swapDetails.destinationChainTxHashes;
@@ -68,8 +71,8 @@ export function reconcileRoute(route: Route, status: StatusResponse, receipt?: D
 export class OneClickIntents {
   constructor(private readonly fetcher: typeof fetch = fetch, private readonly apiKey?: string) {}
   private async request<T>(path: string, body?: unknown): Promise<T> {
-    const response = await this.fetcher(`https://1click.chaindefuser.com/v0/${path}`, { method: body ? "POST" : "GET", headers: { "Content-Type": "application/json", ...(this.apiKey ? { "Authorization": `Bearer ${this.apiKey}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(20_000) });
-    if (!response.ok) throw new Error(`INTENTS_API_${response.status}`); return response.json() as Promise<T>;
+    const response = await this.fetcher(`https://1click.chaindefuser.com/v0/${path}`, { method: body ? "POST" : "GET", headers: { "Content-Type": "application/json", ...(this.apiKey ? { "Authorization": `Bearer ${this.apiKey}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}), redirect: 'error', signal: AbortSignal.timeout(20_000) });
+    if (!response.ok) throw new Error(`INTENTS_API_${response.status}`); return routeJson<T>(response);
   }
   tokens() { return this.request<IntentsToken[]>("tokens"); }
   async quote(request: QuoteRequest): Promise<QuoteResponse> { validateQuoteRequest(request); const quote = await this.request<QuoteResponse>("quote", request); assertQuoteMatches(request, quote); return quote; }

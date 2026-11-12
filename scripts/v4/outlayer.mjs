@@ -1,22 +1,29 @@
 // Deploy only the testnet private capability. Protected plaintext never leaves TEE.
 import {readFileSync,writeFileSync,existsSync}from 'node:fs';
 import {createHash}from 'node:crypto';
+import assert from 'node:assert/strict';
 import {Account,JsonRpcProvider,actions}from '../../packages/client/dist/near.js';
 import {V4NearTransport,AchV4Client}from '../../packages/client/dist/v4.js';
 import {StateStore}from '../../services/lib/store.mjs';
 import {durableActions}from '../../services/lib/transactions.mjs';
 import {privatePath,manifestPath,outlayerPath}from '../../services/lib/paths.mjs';
+import {requireFreshAccounts,requireServiceLayout,requireCurrentWorkflow}from '../../services/lib/workflow.mjs';
 const read=p=>JSON.parse(readFileSync(p,'utf8')),save=(p,v)=>writeFileSync(p,JSON.stringify(v,null,2),{mode:0o600});
 const accounts=read(privatePath('accounts.json')),build=read('docs/v4/build.json'),manifest=read(manifestPath);
+requireFreshAccounts(accounts);requireServiceLayout(manifest);requireCurrentWorkflow(build);
 if(accounts.network!=='testnet'||manifest.network!=='testnet'||manifest.vault!==accounts.vault)throw new Error('TESTNET_PRIVATE_DEPLOYMENT_REQUIRED');
 const worker=readFileSync(build.artifacts.worker.path),hash=createHash('sha256').update(worker).digest('hex');
 if(hash!==build.artifacts.worker.sha256)throw new Error('PRIVATE_BUILD_HASH_MISMATCH');
 const journal=new StateStore(privatePath('outlayer.sqlite')),provider=new JsonRpcProvider({url:accounts.rpc_url},{retries:2});
 const root=read(privatePath('root.json')),vault=read(privatePath('vault.json')),owner=read(privatePath('coordinator-owner.json'));
+if(root.account_id!==manifest.root||vault.account_id!==manifest.vault||owner.account_id!==manifest.coordinator_id)throw new Error('PRIVATE_IDENTITY_NAMESPACE_MISMATCH');
 const rootAccount=new Account(root.account_id,provider,root.secret_key),vaultTransport=new V4NearTransport(vault.account_id,accounts.rpc_url,vault.secret_key,journal),ownerTransport=new V4NearTransport(owner.account_id,accounts.rpc_url,owner.secret_key,journal),ownerClient=new AchV4Client(manifest,ownerTransport,'owner');
 const url='https://test.fastfs.io/'+root.account_id+'/outlayer.testnet/'+hash+'.wasm',profile='ach-private-v4';
 const string=s=>{const b=Buffer.from(s),n=Buffer.alloc(4);n.writeUInt32LE(b.length);return Buffer.concat([n,b]);};
 const size=Buffer.alloc(4);size.writeUInt32LE(worker.length);
+const attemptIndex=process.argv.indexOf('--bootstrap-attempt');
+const bootstrapAttempt=attemptIndex<0?0:Number(process.argv[attemptIndex+1]);
+assert.ok(Number.isInteger(bootstrapAttempt)&&bootstrapAttempt>=0&&bootstrapAttempt<=3,'BOUNDED_BOOTSTRAP_ATTEMPT_REQUIRED');
 try{
  const upload=await durableActions(rootAccount,journal,'worker-upload:'+hash,'outlayer.testnet',[actions.functionCall('__fastdata_fastfs',Buffer.concat([Buffer.from([0]),string(hash+'.wasm'),Buffer.from([1]),string('application/wasm'),size,worker]),1n,0n)],{recordedFastFS:true});
  let downloaded=false;
@@ -34,8 +41,17 @@ try{
  const stored=await vaultTransport.call('outlayer.testnet','store_secrets',{accessor:{WasmHash:{hash}},profile,encrypted_secrets_base64:encrypted,access,vault_id:null},{operation_id:'private-secrets:'+hash,deposit:100_000_000_000_000_000_000_000n,gas:60000000000000n});
  const current=await vaultTransport.view(manifest.vault,'get_config',{}),workerRef={outlayer_account:'outlayer.testnet',url,hash,profile};
  if(!current.private_worker)await vaultTransport.call(manifest.vault,'pin_private_worker',{worker:workerRef},{operation_id:'pin-private-worker:'+hash,deposit:1n});
- else if(JSON.stringify(current.private_worker)!==JSON.stringify(workerRef))throw new Error('PINNED_WORKER_REFERENCE_CONFLICT');
- const keyRun=await ownerTransport.call(manifest.vault,'request_private_encryption_key',{profile},{operation_id:'private-key-bootstrap:'+hash,deposit:20_000_000_000_000_000_000_000n,gas:240000000000000n});
+ else assert.deepEqual(current.private_worker,workerRef,'PINNED_WORKER_REFERENCE_CONFLICT');
+ const bootstrapBase='private-key-bootstrap:'+hash;
+ if(bootstrapAttempt){
+  const previous=await journal.get(bootstrapAttempt===1?bootstrapBase:bootstrapBase+':attempt:'+(bootstrapAttempt-1));
+  assert.ok(previous?.tx_hash&&previous.signer_id===owner.account_id,'PREVIOUS_BOOTSTRAP_OPERATION_REQUIRED');
+  const status=await provider.viewTransactionStatus({txHash:previous.tx_hash,accountId:owner.account_id,waitUntil:'NONE'});
+  assert.equal(status.final_execution_status,'FINAL','FINAL_BOOTSTRAP_FAILURE_REQUIRED');
+  assert.ok(status.receipts_outcome?.some(receipt=>receipt.outcome.executor_id===manifest.vault&&/PRIVATE_KEY_OUTPUT_INVALID|PRIVATE_KEY_RUN_FAILED/.test(receipt.outcome.status?.Failure?.ActionError?.kind?.FunctionCallError?.ExecutionError??'')),'FAILED_KEY_CALLBACK_REQUIRED');
+  assert.equal(await ownerClient.privateEncryptionKey(),null,'EXISTING_PRIVATE_KEY_MUST_BE_RECONCILED');
+ }
+ const keyRun=await ownerTransport.call(manifest.vault,'request_private_encryption_key',{profile},{operation_id:bootstrapBase+(bootstrapAttempt?':attempt:'+bootstrapAttempt:''),deposit:20_000_000_000_000_000_000_000n,gas:240000000000000n});
  let encryption;
  for(let i=0;i<60;i++){encryption=await ownerClient.privateEncryptionKey();if(encryption)break;await new Promise(resolve=>setTimeout(resolve,1000));}
  if(!encryption||encryption.worker_hash!==hash)throw new Error('LIVE_ENCRYPTION_KEY_VERIFICATION_FAILED');

@@ -5,10 +5,11 @@
   "main": "index.js",
   "scripts": {
     "build": "npm run build --prefix packages/core && npm run build --prefix packages/client && npm run build --prefix contracts/clearing && npm run build --prefix web",
-    "test": "npm test --prefix packages/core -- --maxWorkers=1 --minWorkers=1 && npm test --prefix packages/client && npm test --prefix agent && npm test --prefix contracts/clearing",
+    "test": "npm test --prefix packages/core -- --maxWorkers=1 && npm test --prefix packages/client && npm test --prefix agent && npm test --prefix contracts/clearing",
     "build:v4": "node --env-file-if-exists=.env.local scripts/v4/build.mjs",
     "test:contract": "node --env-file-if-exists=.env.local scripts/v4/test-contract.mjs",
     "test:wasm": "node --test --experimental-test-isolation=none tests/v4/wasm.test.mjs",
+    "test:security": "node --test --experimental-test-isolation=none tests/v4/security.test.mjs tests/v4/clearing.test.mjs tests/v4/proxy.test.mjs tests/v4/evaluation-ui.test.mjs",
     "test:services": "npm test --prefix services",
     "test:live": "node --env-file-if-exists=.env.local scripts/v4/live.mjs",
     "test:e2e": "node --env-file-if-exists=.env.local scripts/v4/browser.mjs"

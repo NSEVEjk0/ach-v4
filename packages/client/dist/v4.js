@@ -47,11 +47,13 @@ export function validateV4Deployment(c) {
         throw new Error("LEGACY_VAULT_REFUSED");
     if ((c.network === "testnet") !== c.vault.endsWith(".testnet") || (c.network === "testnet") !== c.token.endsWith(".testnet"))
         throw new Error("NETWORK_ACCOUNT_MISMATCH");
-    const url = new URL(c.rpc_url);
-    if (url.protocol !== "https:" && !["127.0.0.1", "localhost"].includes(url.hostname))
-        throw new Error("INVALID_RPC_URL");
+    if (c.workflow_revision !== undefined && c.workflow_revision !== 2)
+        throw new Error("INVALID_WORKFLOW_REVISION");
+    validateRpcUrl(c.rpc_url);
     return c;
 }
+function validateRpcUrl(endpoint) { const url = new URL(endpoint); if (url.username || url.password || !(url.protocol === "https:" || url.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)))
+    throw new Error("INVALID_RPC_URL"); }
 export function v4Digest(bytes) { return createHash("sha256").update(bytes).digest("hex"); }
 export function canonicalV4(purpose, network, vault, fields) {
     return Buffer.concat(["ACH", "4", purpose, network, vault, ...fields].map(field => {
@@ -79,6 +81,69 @@ export function canonicalV4Invoice(c, i) {
 export function v4InvoiceHash(c, i) { return v4Digest(canonicalV4Invoice(c, i)); }
 export function v4ChargeId(c, i) {
     return v4Digest(canonicalV4("purchase-charge", c.network, c.vault, [i.buyer, i.purchase_id, String(i.terms_version)]));
+}
+export function v4FundedInvoiceId(c, order) {
+    return `bill-${v4ChargeId(c, order)}`;
+}
+export function v4PurchaseGroupId(c, proposer, requestId) {
+    account(proposer);
+    id(requestId);
+    const prefix = v4Digest(canonicalV4("purchase-group-proposer", c.network, c.vault, [proposer])).slice(0, 32);
+    const result = `pg-${prefix}-${requestId}`;
+    id(result);
+    return result;
+}
+export function v4FundingGroupHash(c, input) {
+    id(input.id);
+    integer(input.deadline_ms);
+    const limit = input.private ? V4_MAX_PRIVATE_INVOICES : 48;
+    if (!input.orders.length || input.orders.length > limit)
+        throw new Error("PURCHASE_GROUP_LIMIT");
+    const orders = [...input.orders].sort((a, b) => { const x = v4ChargeId(c, a), y = v4ChargeId(c, b); return x < y ? -1 : x > y ? 1 : 0; });
+    const members = new Set(), charges = new Set();
+    const fields = [input.id, String(input.deadline_ms), input.private ? "private" : "public", String(orders.length)];
+    for (const o of orders) {
+        id(o.purchase_id);
+        integer(o.terms_version);
+        account(o.buyer);
+        account(o.seller);
+        hash(o.order_commitment);
+        if (!o.terms_version || o.buyer === o.seller || charges.has(v4ChargeId(c, o)))
+            throw new Error("INVALID_PURCHASE_ORDER");
+        charges.add(v4ChargeId(c, o));
+        members.add(o.buyer);
+        members.add(o.seller);
+        fields.push(o.purchase_id, String(o.terms_version), o.buyer, o.seller, o.order_commitment);
+        if (input.private) {
+            if (o.public_terms !== null || o.purchase_id.length < 32)
+                throw new Error("PRIVATE_ORDER_DISCLOSURE");
+        }
+        else {
+            const t = o.public_terms;
+            if (!t || v4Units(t.amount) === 0n)
+                throw new Error("PUBLIC_PURCHASE_TERMS_REQUIRED");
+            id(t.service);
+            hash(t.terms_hash);
+            hash(t.artifact_hash);
+            fields.push(t.amount, t.service, t.terms_hash, t.artifact_hash);
+        }
+    }
+    const ps = [...input.positions].sort((a, b) => a.account_id < b.account_id ? -1 : a.account_id > b.account_id ? 1 : 0);
+    if (ps.length < 2 || ps.length > 12 || new Set(ps.map(p => p.account_id)).size !== ps.length || JSON.stringify([...members].sort()) !== JSON.stringify(ps.map(p => p.account_id)))
+        throw new Error("PURCHASE_GROUP_MEMBER_MISMATCH");
+    let sum = 0n;
+    for (const p of ps) {
+        if (!/^(0|[1-9]\d*|-[1-9]\d*)$/.test(p.net))
+            throw new Error("INVALID_NET");
+        v4Units(p.net.replace('-', ''));
+        sum += BigInt(p.net);
+    }
+    if (sum !== 0n)
+        throw new Error("UNBALANCED_ROUND");
+    fields.push(String(ps.length));
+    for (const p of ps)
+        fields.push(p.account_id, p.net);
+    return v4Digest(canonicalV4("purchase-group", c.network, c.vault, fields));
 }
 export function v4PrivateInvoiceCommitment(c, spec, salt) {
     hash(salt);
@@ -220,11 +285,8 @@ export class V4RpcProvider extends JsonRpcProvider {
         const endpoints = [...new Set(typeof urls === 'string' ? [urls] : urls)];
         if (!endpoints.length || endpoints.length > 4)
             throw new Error('INVALID_RPC_ENDPOINTS');
-        for (const endpoint of endpoints) {
-            const u = new URL(endpoint);
-            if (u.protocol !== 'https:' && !['127.0.0.1', 'localhost'].includes(u.hostname))
-                throw new Error('INVALID_RPC_URL');
-        }
+        for (const endpoint of endpoints)
+            validateRpcUrl(endpoint);
         super({ url: endpoints[0] }, { retries: 1 });
         this.connections = endpoints.map(url => new JsonRpcProvider({ url }, { retries: 1 }));
     }
@@ -256,12 +318,31 @@ export class V4RpcProvider extends JsonRpcProvider {
         throw new Error('RPC_UNAVAILABLE');
     };
 }
+const signerQueues = new Map();
+export async function withV4SignerLock(account, task) {
+    const signer = account.getSigner();
+    if (!signer)
+        throw new Error("SIGNER_REQUIRED");
+    const key = `${account.accountId}:${String(await signer.getPublicKey())}`;
+    const previous = signerQueues.get(key) ?? Promise.resolve();
+    let unlock;
+    const current = new Promise(resolve => { unlock = resolve; });
+    signerQueues.set(key, current);
+    await previous;
+    try {
+        return await task();
+    }
+    finally {
+        unlock();
+        if (signerQueues.get(key) === current)
+            signerQueues.delete(key);
+    }
+}
 export class V4NearTransport {
     account_id;
     journal;
     provider;
     account;
-    queue = Promise.resolve();
     constructor(account_id, rpc, signer, journal) {
         this.account_id = account_id;
         this.journal = journal;
@@ -279,21 +360,18 @@ export class V4NearTransport {
         return result;
     }
     async call(contract, method, args, options) {
-        // Serialize transactions for this signer; external processes must use distinct keys.
-        const previous = this.queue;
-        let unlock;
-        this.queue = new Promise(resolve => { unlock = resolve; });
-        await previous;
-        try {
-            return await this.submit(contract, method, args, options);
-        }
-        finally {
-            unlock();
-        }
+        // All transport instances and action batches sharing this key serialize.
+        // External processes must still use distinct keys.
+        return withV4SignerLock(this.account, () => this.submit(contract, method, args, options));
     }
-    async submit(contract, method, args, options) {
+    async reconcile(contract, method, args, options) {
+        return withV4SignerLock(this.account, () => this.submit(contract, method, args, options, true));
+    }
+    async submit(contract, method, args, options, reconcileOnly = false) {
         const payload_hash = v4Digest(stableJson({ signer: this.account_id, contract, method, args, deposit: String(options.deposit ?? 0n), gas: String(options.gas ?? 120000000000000n) }));
         const existing = await this.journal.get(options.operation_id);
+        if (!existing && reconcileOnly)
+            throw new Error('TRANSACTION_NOT_RECORDED');
         let op;
         if (existing) {
             if (existing.payload_hash !== payload_hash)
@@ -307,13 +385,13 @@ export class V4NearTransport {
             // can wait indefinitely for bytes that were rejected before inclusion.
             try {
                 const status = await this.provider.viewTransactionStatus({ txHash: existing.tx_hash, accountId: existing.signer_id, waitUntil: "NONE" });
-                return await this.confirm(existing, status);
+                return await this.confirm(existing, status, true);
             }
             catch (error) {
                 const current = await this.journal.get(existing.id);
                 if (current?.state === "FAILED")
                     throw new Error(current.error ?? "CHAIN_EXECUTION_FAILED");
-                if (!v4UnknownTransaction(error))
+                if (reconcileOnly || !v4UnknownTransaction(error))
                     throw new V4BroadcastUnknown(existing.id, existing.tx_hash);
                 // Retry the exact signed bytes after reconciling a definite missing tx.
                 // A crash before broadcast cannot strand an operation or create a new nonce.
@@ -334,7 +412,7 @@ export class V4NearTransport {
             const fresh = new Account(this.account_id, this.provider, signer);
             const transaction = await fresh.createTransaction({ receiverId: contract, actions: [actions.functionCall(method, args, options.gas ?? 120000000000000n, options.deposit ?? 0n)], publicKey: await signer.getPublicKey() });
             const signed = await signer.signTransaction(transaction);
-            op = { id: options.operation_id, payload_hash, signer_id: this.account_id, tx_hash: baseEncode(signed.txHash), signed_transaction: Buffer.from(signed.signedTransaction.encode()).toString("base64"), state: "SIGNED" };
+            op = { id: options.operation_id, payload_hash, signer_id: this.account_id, tx_hash: baseEncode(signed.txHash), signed_transaction: Buffer.from(signed.signedTransaction.encode()).toString("base64"), state: "SIGNED", created_at_ms: Date.now(), ...(typeof (args.amount ?? args.expected_available) === 'string' ? { amount: String(args.amount ?? args.expected_available) } : {}) };
             await this.journal.put(op); // Durable before any broadcast.
         }
         try {
@@ -350,8 +428,10 @@ export class V4NearTransport {
             throw new V4BroadcastUnknown(op.id, op.tx_hash);
         }
     }
-    async confirm(op, response) {
+    async confirm(op, response, requireFinal = false) {
         const res = response;
+        if (requireFinal && res.final_execution_status !== 'FINAL' || res.final_execution_status && res.final_execution_status !== 'FINAL')
+            throw new V4BroadcastUnknown(op.id, op.tx_hash);
         if (res.status?.Failure) {
             op.state = "FAILED";
             op.error = "CHAIN_EXECUTION_FAILED";
@@ -381,29 +461,48 @@ export class AchV4Client {
         this.role = role;
         this.deployment = validateV4Deployment(config);
     }
-    async assertDeployment() {
-        if (this.validated)
+    async assertDeployment(refresh = false) {
+        if (this.validated && !refresh)
             return;
         const c = await this.transport.view(this.deployment.vault, "get_config", {});
         if (c.protocol_version !== 4 || c.network !== this.deployment.network || c.vault !== this.deployment.vault || c.token !== this.deployment.token || c.decimals !== 6)
             throw new Error("DEPLOYMENT_MISMATCH");
-        if (this.deployment.code_hash && this.transport.codeHash && await this.transport.codeHash(this.deployment.vault) !== this.deployment.code_hash)
-            throw new Error("DEPLOYED_CODE_HASH_MISMATCH");
+        if (this.deployment.workflow_revision !== undefined && c.workflow_revision !== this.deployment.workflow_revision)
+            throw new Error("WORKFLOW_REVISION_MISMATCH");
+        if (this.deployment.code_hash) {
+            if (!this.transport.codeHash)
+                throw new Error('CODE_HASH_VERIFICATION_REQUIRED');
+            if (await this.transport.codeHash(this.deployment.vault) !== this.deployment.code_hash)
+                throw new Error("DEPLOYED_CODE_HASH_MISMATCH");
+        }
         this.validated = true;
     }
     async read(method, args = {}) { await this.assertDeployment(); return this.transport.view(this.deployment.vault, method, args); }
     async write(method, args, operation_id, owner = false) {
-        await this.assertDeployment();
+        await this.assertDeployment(true);
         if (owner && this.role !== "owner")
             throw new Error("OWNER_SIGNER_REQUIRED");
         return this.transport.call(this.deployment.vault, method, args, { operation_id, deposit: owner || this.role === "owner" ? 1n : 0n });
     }
     register(name, requestId = `register:${this.transport.account_id}`) { return this.write("register_account", { name }, requestId, true); }
+    sponsorAccount(account_id, name, expires_at_ms, requestId) { account(account_id); integer(expires_at_ms); return this.write("authorize_account_registration", { account_id, name, expires_at_ms }, requestId, true); }
     setPolicy(policy, requestId) { return this.write("set_agent_policy", policy, requestId, true); }
     revokeAgent(requestId) { return this.write("revoke_agent", {}, requestId, true); }
     balance(account_id = this.transport.account_id) { return this.read("get_balance", { account_id }); }
     invoice(id) { return this.read("get_invoice", { id }); }
     round(id) { return this.read("get_round", { id }); }
+    purchaseGroup(id) { return this.read("get_purchase_group", { id }); }
+    purchaseOrder(id) { return this.read("get_purchase_order", { id }); }
+    proposePurchaseGroup(input) { v4FundingGroupHash(this.deployment, input); return this.write("propose_purchase_group", { input }, `purchase-group:${input.id}`); }
+    authorizePurchaseGroup(group, expected_net) {
+        if (v4FundingGroupHash(this.deployment, group.input) !== group.hash)
+            throw new Error("PURCHASE_GROUP_HASH_MISMATCH");
+        const own = group.input.positions.find(p => p.account_id === this.transport.account_id);
+        if (!own || own.net !== expected_net)
+            throw new Error("EXACT_NET_AUTHORIZATION_REQUIRED");
+        return this.write("authorize_purchase_group", { id: group.input.id, expected_hash: group.hash, expected_net }, `fund:${group.input.id}:${this.transport.account_id}`);
+    }
+    expirePurchaseGroup(id) { return this.write("expire_purchase_group", { id }, `expire-purchase-group:${id}`); }
     proposeInvoice(spec) { canonicalV4Invoice(this.deployment, spec); return this.write("propose_invoice", { spec }, `invoice:${spec.id}`); }
     acceptInvoice(invoice) { if (v4InvoiceHash(this.deployment, invoice.spec) !== invoice.hash)
         throw new Error("INVOICE_HASH_MISMATCH"); return this.write("accept_invoice", { id: invoice.spec.id, expected_hash: invoice.hash }, `accept:${invoice.spec.id}:${this.transport.account_id}`); }
@@ -444,7 +543,7 @@ export class AchV4Client {
     async requestPrivateRound(request, sponsorPayment = 20000000000000000000000n) {
         if (this.role !== "owner")
             throw new Error("OWNER_SPONSOR_SIGNER_REQUIRED");
-        await this.assertDeployment();
+        await this.assertDeployment(true);
         const encryption = await this.privateEncryptionKey();
         if (!encryption)
             throw new Error("PRIVATE_MODE_UNAVAILABLE");
@@ -463,7 +562,9 @@ export class AchV4Client {
         if (this.role !== "owner")
             throw new Error("OWNER_SIGNER_REQUIRED");
         v4Units(amount);
-        await this.assertDeployment();
-        return this.transport.call(this.deployment.token, "ft_transfer_call", { receiver_id: this.deployment.vault, amount, msg: "deposit" }, { operation_id: `deposit:${id}`, deposit: 1n, gas: 120000000000000n });
+        if (!/^[a-zA-Z0-9_.-]{1,96}$/.test(id))
+            throw new Error("INVALID_ID");
+        await this.assertDeployment(true);
+        return this.transport.call(this.deployment.token, "ft_transfer_call", { receiver_id: this.deployment.vault, amount, msg: `deposit:${id}` }, { operation_id: `deposit:${id}`, deposit: 1n, gas: 120000000000000n });
     }
 }

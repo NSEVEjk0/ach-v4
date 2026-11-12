@@ -12,7 +12,12 @@ const defaultManifest=privateRoot===legacyRoot?'docs/v4/deployment.json':path.jo
 export const manifestPath=path.resolve(repoRoot,argument('--manifest')??(rootArgument?defaultManifest:process.env.ACH_V4_MANIFEST??defaultManifest));
 export const outlayerPath=path.join(path.dirname(manifestPath),'outlayer.json');
 export const privatePath=(...parts)=>path.join(privateRoot,...parts);
-export function loadPrivateEnvironment(){const env=parseEnv(readFileSync(privatePath('services.env'),'utf8'));for(const[name,value]of Object.entries(env))if(name.startsWith('ACH_')||name==='NEAR_AI_API_KEY')process.env[name]=value;}
+export function loadPrivateEnvironment(){
+ const env=parseEnv(readFileSync(privatePath('services.env'),'utf8'));
+ for(const[name,expected]of [['ACH_V4_PRIVATE_ROOT',privateRoot],['ACH_V4_MANIFEST',manifestPath]])if(Object.hasOwn(env,name)&&(!env[name]||path.resolve(repoRoot,env[name])!==expected))throw new Error('SERVICE_ENVIRONMENT_NAMESPACE_MISMATCH');
+ for(const[name,value]of Object.entries(env))if((name.startsWith('ACH_')||name==='NEAR_AI_API_KEY')&&!['ACH_V4_PRIVATE_ROOT','ACH_V4_MANIFEST'].includes(name))process.env[name]=value;
+ process.env.ACH_V4_PRIVATE_ROOT=privateRoot;process.env.ACH_V4_MANIFEST=manifestPath;
+}
 // Child processes inherit the same candidate namespace. Existing keys, stores
 // and live manifests are never copied into a new deployment.
 process.env.ACH_V4_PRIVATE_ROOT=privateRoot;

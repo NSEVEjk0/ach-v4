@@ -1,13 +1,13 @@
 import { ReceiptText } from 'lucide-react';
 import { Arrow } from './Brand';
 import { EmptyState, State } from './Interface';
-import { money } from '../../lib/v4';
+import { invoiceId, money } from '../../lib/v4';
 import type { Invoice } from '../../lib/v4';
 
 export const serviceNames: Record<string, string> = {
   chart: 'Chart generation', audit: 'Data & source checks', references: 'Reference packet',
 };
-export const invoiceId = (invoice: Invoice) => invoice.private ? invoice.charge_id ?? invoice.spec.id : invoice.spec.id;
+export { invoiceId } from '../../lib/v4';
 
 export default function PaymentsTable({ invoices, name, onDetails, selected, onSelect, emptyTitle = 'No payments here yet' }: {
   invoices: Invoice[];

@@ -66,6 +66,41 @@ export function buildHistory(data: Snapshot, invoices: Invoice[], privateResults
       state: financialState(round.status), status: round.status, parties: round.input.positions.map(position => position.account_id), tx: settledEvent ? settledEvent.data.tx_hash as string : null });
   }
 
+  const actions = new Map<string, typeof data.events>();
+  for (const event of data.events) if (/^(deposit|withdrawal|agent-revoke)-/.test(event.kind)) {
+    actions.set(event.reference, [...(actions.get(event.reference) ?? []), event]);
+  }
+  for (const activity of data.account_activity ?? []) if (/^(deposit|withdrawal-|agent-revoked)/.test(activity.kind)) {
+    const ref = activity.kind === 'deposit' ? activity.reference.startsWith('deposit-') ? activity.reference : `chain-deposit:${activity.account_id}:${activity.sequence}` : activity.kind === 'agent-revoked' ? `chain-revoke:${activity.account_id}:${activity.reference}` : activity.reference;
+    if (activity.kind === 'agent-revoked' && [...actions.values()].some(events => events.some(e => e.kind === 'agent-revoke-completed' && e.data.account_id === activity.account_id && Math.abs(e.at_ms-activity.at_ms)<10000))) continue;
+    actions.set(ref, [...(actions.get(ref) ?? []), {sequence:activity.sequence,at_ms:activity.at_ms,kind:activity.kind,reference:ref,data:{account_id:activity.account_id,amount:activity.amount,chain:true}}]);
+  }
+  for(const operation of data.owner_operations??[]){
+    const reference=operation.id.startsWith('deposit:')?'deposit-'+operation.id.slice(8):operation.id.startsWith('withdraw:')?operation.id.slice(9):operation.id.startsWith('recovery:')?`recovery-${operation.id.split(':').at(-1)}-${operation.account_id}`:operation.id;
+    const kind=operation.id.startsWith('deposit:')?'deposit':operation.id.startsWith('revoke-')?'agent-revoke':'withdrawal';
+    if(!actions.has(reference))actions.set(reference,[{sequence:0,at_ms:operation.created_at_ms??0,kind:kind+(operation.state==='FAILED'?'-failed':'-requested'),reference,data:{account_id:operation.account_id,operation_id:operation.id,amount:operation.amount??null}}]);
+  }
+  for (const [reference, events] of actions) {
+    events.sort((a,b)=>a.at_ms-b.at_ms);
+    const complete=events.filter(e=>e.kind.endsWith('completed')||e.kind==='deposit'||e.kind==='agent-revoked');
+    const restored=events.filter(e=>e.kind.endsWith('restored'));
+    const event=complete.at(-1)??restored.at(-1)??events.at(-1)!;
+    const owner=String(event.data.account_id ?? events[0].data.account_id ?? ''),action=event.kind.startsWith('deposit')?'deposit':event.kind.startsWith('withdrawal')?'withdrawal':'revoke';
+    const operationId=events.map(e=>e.data.operation_id).find(v=>typeof v==='string');
+    const operation=data.owner_operations?.find(op=>op.id===operationId||action==='deposit'&&op.id==='deposit:'+reference.replace(/^deposit-/, '')||action==='withdrawal'&&op.id==='withdraw:'+reference||action==='revoke'&&op.id===reference);
+    const confirmed=operation?.state==='CONFIRMED';
+    const amount=events.map(e=>e.data.amount).find(v=>typeof v==='string'&&/^(0|[1-9]\d*)$/.test(v));
+    const credited=confirmed&&action==='deposit'&&typeof amount==='string'&&amount!=='0'&&operation?.value===amount&&['near_final','local_wasm'].includes(operation.evidence??'');
+    const revoked=confirmed&&action==='revoke'&&Boolean(operation?.value&&typeof operation.value==='object'&&'revoked' in operation.value&&operation.value.revoked===true);
+    const status=complete.length?'COMPLETED':restored.length?'RESTORED':event.kind.endsWith('failed')?'FAILED':credited||revoked?'COMPLETED':'PENDING';
+    const receipt=events.findLast(e=>e.data.evidence==='near_final'&&typeof e.data.tx_hash==='string');
+    entries.push({key:'account-action:'+reference,kind:'account',target:null,reference,
+      title:action==='deposit'?'Wallet deposit':action==='withdrawal'?(events.some(e=>e.data.recovery)?'Withdraw available funds':'Wallet withdrawal'):'Agent trading revoked',
+      description:status==='RESTORED'?`${name(owner)} · transfer failed and funds returned`:status==='FAILED'?`${name(owner)} · operation refused`:name(owner),
+      amount:typeof amount==='string'?amount:null,amountLabel:action==='deposit'?'Added to wallet':action==='withdrawal'?(status==='RESTORED'?'Returned to wallet':'Sent to agent account'):'',
+      timestamp:event.at_ms,state:status==='RESTORED'?'failed':financialState(status),status,parties:[owner],tx:receipt?receipt.data.tx_hash as string:confirmed&&operation.evidence==='near_final'?operation.tx_hash:null});
+  }
+
   for (const event of data.events.filter(event => ['session-ready', 'wallet-setup-waiting'].includes(event.kind))) {
     entries.push({ key: 'account:' + event.sequence, kind: 'account', target: null, reference: event.reference,
       title: event.kind === 'session-ready' ? 'Agent wallets ready' : 'Wallet setup in progress', description: event.kind === 'session-ready' ? 'Your sponsored test session is ready to use' : 'Account creation or funding is awaiting confirmation',
@@ -76,7 +111,7 @@ export function buildHistory(data: Snapshot, invoices: Invoice[], privateResults
 
 export function historyCsv(entries: HistoryEntry[]) {
   const cell = (value: string) => {
-    const safe = /^[=+@\-\t\r]/.test(value) ? "'" + value : value;
+    const safe = /^[=+@\-\t\r\n]|^[\s\uFEFF]+[=+@-]/.test(value) ? "'" + value : value;
     return '"' + safe.replaceAll('"', '""') + '"';
   };
   const rows = [['Timestamp', 'Type', 'Description', 'Details', 'Status', 'Amount type', 'Amount (tUSDC)', 'Reference'], ...entries.map(entry => [

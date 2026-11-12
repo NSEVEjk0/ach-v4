@@ -25,7 +25,7 @@ function snapshot(config) {
     gross_invoice_volume: '240000000', net_settlement_volume: '40000000', settled_at_ms: null, reason: null,
   };
   return {
-    session: { id: 'explicit-ui-fixture-only', participants: members, initial_balance: '1000000', created_at_ms: now, expires_at_ms: now + 86400000, state: 'READY' },
+    session: { id: 'explicit-ui-fixture-only', participants: members, initial_balance: '1000000', created_at_ms: now, expires_at_ms: now + 86400000, state: 'READY',clearing_policy:{mode:'manual'} },
     deployment: { ...config },
     balances: members.map((p, n) => ({ account_id: p.account_id, name: p.name, balance: n === 0 ? '90000000' : '0', reserved: n === 0 ? '40000000' : '0', available: n === 0 ? '50000000' : '0', pending_withdrawals: '0', gross_purchase_budget_used: '0',
       policy: { max_invoice: '100000000', gross_budget: '1000000000', max_net_commitment: '1000000000', expires_at_ms: now + 86400000, revoked: false } })),

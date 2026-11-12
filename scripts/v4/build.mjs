@@ -5,7 +5,7 @@ import path from 'node:path';
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { stdio: 'inherit', ...options });
-  if (result.status !== 0) throw new Error(`BUILD_FAILED:${command}`);
+  if (result.error || result.status !== 0) throw new Error(`BUILD_FAILED:${command}`);
 }
 const rustflags = '-C target-feature=-reference-types,-multivalue,-bulk-memory';
 const offline = process.argv.includes('--offline') ? ['--offline'] : [];
@@ -17,6 +17,7 @@ mkdirSync('docs/v4', { recursive: true });
 const artifact = (filename) => ({ path: filename, bytes: readFileSync(filename).length, sha256: createHash('sha256').update(readFileSync(filename)).digest('hex') });
 const manifest = {
   protocol_version: 4,
+  workflow_revision:2,
   built_at: new Date().toISOString(),
   artifacts: {
     vault: artifact('target/wasm32-unknown-unknown/release/ach_vault.wasm'),
