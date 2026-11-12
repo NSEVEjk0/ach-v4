@@ -59,7 +59,7 @@ test('a supervisor PID from another namespace or a partial command match cannot 
  const namespace={repoRoot:'/root/ach-v4',privateRoot:'/root/ach-v4/.local/candidate-a',manifestPath:'/root/ach-v4/.local/candidate-a/deployment.json'};
  const inspected={cwd:namespace.repoRoot,args:[process.execPath,namespace.repoRoot+'/services/supervisor.mjs'],environment:{ACH_V4_PRIVATE_ROOT:namespace.privateRoot,ACH_V4_MANIFEST:namespace.manifestPath}};
  assert.equal(isNamespaceSupervisor(inspected,namespace),true);
- for(const altered of [{...inspected,cwd:'/root/ach'},{...inspected,args:[process.execPath,namespace.repoRoot+'/services/supervisor.mjs.backup']},{...inspected,environment:{...inspected.environment,ACH_V4_PRIVATE_ROOT:'/root/ach-v4/.local/candidate-b'}},{...inspected,environment:{...inspected.environment,ACH_V4_MANIFEST:'/root/ach-v4/docs/v4/deployment.json'}},{...inspected,environment:{}}])assert.equal(isNamespaceSupervisor(altered,namespace),false);
+ for(const altered of [{...inspected,cwd:'/root/ach'},{...inspected,args:[process.execPath,namespace.repoRoot+'/services/supervisor.mjs.backup']},{...inspected,environment:{...inspected.environment,ACH_V4_PRIVATE_ROOT:'/root/ach-v4/.local/candidate-b'}},{...inspected,environment:{...inspected.environment,ACH_V4_MANIFEST:'/root/ach-v4/.local/other-deployment/deployment.json'}},{...inspected,environment:{}}])assert.equal(isNamespaceSupervisor(altered,namespace),false);
 });
 
 test('loading a service environment cannot redirect children to another deployment namespace',async()=>{
@@ -103,8 +103,8 @@ test('a corrected release cannot reuse historical flaw-reproduction evidence, fa
  }
  for(const altered of [{...review,workflow_fixes_implemented:false,financial_fixes_implemented:false},{...review,workflow_revision:1},{...review,automated_tests_passed:9},{...review,suites:suites.map((suite,index)=>index===1?{...suite,failed:1,exit_code:1}:suite)},{...review,source_sha256:{...sources,'services/agents/planner.mjs':'c'.repeat(64)}},{...review,source_sha256:{}},{...review,artifacts:[{name:'vault',sha256:'c'.repeat(64)}]}])assert.throws(()=>requireCorrectionEvidence(altered,manifest,sources),/CURRENT_CORRECTED_WORKFLOW_EVIDENCE_REQUIRED/);
  const browser={passed:true,checks:['live-third-identical-brief','live-fresh-workspace-work-and-clearing','live-workspace-switch-preserves-history-and-private-results'].map(name=>({name}))};
- assert.equal(requireCorrectedBrowserEvidence(browser,{judgeJourney:true}),browser);
- for(const altered of [{...browser,passed:false},{...browser,checks:browser.checks.slice(1)},{...browser,workflow_findings:[{id:'W06'}]},{...browser,workflow_findings:'invalid'}])assert.throws(()=>requireCorrectedBrowserEvidence(altered,{judgeJourney:true}),/CURRENT_CORRECTED_BROWSER_EVIDENCE_REQUIRED/);
+ assert.equal(requireCorrectedBrowserEvidence(browser,{hostedJourney:true}),browser);
+ for(const altered of [{...browser,passed:false},{...browser,checks:browser.checks.slice(1)},{...browser,workflow_findings:[{id:'W06'}]},{...browser,workflow_findings:'invalid'}])assert.throws(()=>requireCorrectedBrowserEvidence(altered,{hostedJourney:true}),/CURRENT_CORRECTED_BROWSER_EVIDENCE_REQUIRED/);
  const context={commit:'a'.repeat(40),dirty:false},fingerprint=sourceFingerprint(context);
  assert.equal(fingerprint.repository_pushed,false);
  const publication={verified:true,repository:'NSEVEjk0/ach-v4',commit:context.commit,fingerprint_sha256:fingerprint.fingerprint_sha256,verified_at:new Date().toISOString()};

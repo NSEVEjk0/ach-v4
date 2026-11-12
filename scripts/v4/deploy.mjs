@@ -16,7 +16,7 @@ mkdirSync(privateRoot, { recursive: true, mode: 0o700 });
 const accounts = json(path.join(privateRoot, 'accounts.json'));
 requireFreshAccounts(accounts);
 const layout=serviceLayout(accounts);
-const build = json('docs/v4/build.json');
+const build = json('target/ach-build.json');
 requireCurrentWorkflow(build);
 const previousManifest = existsSync(manifestPath) ? json(manifestPath) : null;
 if (previousManifest && (previousManifest.vault !== accounts.vault || previousManifest.token !== accounts.token)) throw new Error('EXISTING_DEPLOYMENT_CONFLICT');
@@ -136,7 +136,6 @@ try {
     ...(previousManifest?.gateway ? { gateway: previousManifest.gateway } : {}),
     transactions: [...new Map([...(previousManifest?.transactions ?? []), ...evidence.map(({ value, ...result }) => result)].map(record => [record.tx_hash, record])).values()],
   };
-  mkdirSync('docs/v4', { recursive: true });
   writeFileSync(manifestPath, encode(manifest));
   const serviceEnv = path.join(privateRoot, 'services.env');
   if (!existsSync(serviceEnv)) writeFileSync(serviceEnv, `ACH_V4_MANIFEST=${manifestPath}\nACH_V4_PRIVATE_ROOT=${privateRoot}\nACH_V4_SERVICE_TOKEN=${randomBytes(32).toString('hex')}\n`, { mode: 0o600, flag: 'wx' });

@@ -9,7 +9,7 @@ import {durableActions}from '../../services/lib/transactions.mjs';
 import {privatePath,manifestPath,outlayerPath}from '../../services/lib/paths.mjs';
 import {requireFreshAccounts,requireServiceLayout,requireCurrentWorkflow}from '../../services/lib/workflow.mjs';
 const read=p=>JSON.parse(readFileSync(p,'utf8')),save=(p,v)=>writeFileSync(p,JSON.stringify(v,null,2),{mode:0o600});
-const accounts=read(privatePath('accounts.json')),build=read('docs/v4/build.json'),manifest=read(manifestPath);
+const accounts=read(privatePath('accounts.json')),build=read('target/ach-build.json'),manifest=read(manifestPath);
 requireFreshAccounts(accounts);requireServiceLayout(manifest);requireCurrentWorkflow(build);
 if(accounts.network!=='testnet'||manifest.network!=='testnet'||manifest.vault!==accounts.vault)throw new Error('TESTNET_PRIVATE_DEPLOYMENT_REQUIRED');
 const worker=readFileSync(build.artifacts.worker.path),hash=createHash('sha256').update(worker).digest('hex');

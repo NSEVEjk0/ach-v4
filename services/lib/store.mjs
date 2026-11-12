@@ -62,7 +62,7 @@ export class StateStore {
       if(admission&&now-admission.last_started_at<intervalMs)throw new Error('BRIEF_RATE_LIMITED');
       const day=new Date(now).toISOString().slice(0,10),used=this.db.prepare('SELECT requests_reserved FROM inference_days WHERE day=?').get(day)?.requests_reserved??0;
       // Reserve both allowed planner attempts before a new paid inference.
-      // This shared resource budget does not impose a per-judge brief count.
+      // A shared resource budget bounds usage while preserving repeat requests.
       if(used+2>maxPlannerCallsPerDay)throw new Error('SPONSORED_INFERENCE_UNAVAILABLE');
       const job=this.startJob(id,sessionId,payload);
       this.db.prepare('INSERT INTO brief_admissions VALUES(?,?) ON CONFLICT(session_id) DO UPDATE SET last_started_at=excluded.last_started_at').run(sessionId,now);

@@ -34,7 +34,7 @@ async function backing(){const[ledger,actual,account]=await Promise.all([provide
 async function publicFlow(){
  const owned=await session(privatePath('live-public-session.json'),'public'),token=owned.token,id=owned.seed;
  await request('/run',{request_id:id,brief:'Create an audited, sourced chart of these agent service workloads.',mode:'report',budget:'300000',privacy:'public',data:[{label:'Research calls',value:120},{label:'Visual tasks',value:85},{label:'Audit tasks',value:64}]},token);
- const delivered=await until(()=>request('/snapshot',undefined,token),s=>s.jobs.some(j=>j.id==='run-'+id&&j.state==='COMPLETE'),'actual-ai-services');
+ const delivered=await until(()=>request('/snapshot',undefined,token),s=>s.jobs.some(j=>j.id==='run-'+id&&j.state==='COMPLETE'),'service-deliveries');
  const artifact=delivered.jobs.find(j=>j.id==='run-'+id).result;assert.equal(artifact.planner.kind,'llm');assert.equal(artifact.chart.audit.valid,true);assert.ok(artifact.planner.response_id);
  const billIds=artifact.bills.map(i=>i.spec.id),roundId=v4Digest(id+':clear').slice(0,32);
  if(!delivered.rounds.some(r=>r.status==='SETTLED'&&billIds.every(i=>r.input.invoice_ids.includes(i))))await request('/clear',{request_id:roundId,selected_accounts:delivered.session.participants.map(p=>p.account_id),invoice_ids:billIds},token);

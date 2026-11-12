@@ -1,5 +1,4 @@
-// Export verified release metadata. Browser keys, service credentials and
-// private documents remain in the private deployment namespace.
+// Store release metadata in the private deployment namespace.
 import assert from 'node:assert/strict';
 import {readFileSync,writeFileSync,mkdirSync,copyFileSync,existsSync} from 'node:fs';
 import {createHash} from 'node:crypto';
@@ -46,7 +45,7 @@ for(const [directory,expectedUrl] of browserReports){
   assert.ok(report.started_at>=state.prepared_at||!expectedUrl,'CURRENT_HOSTED_REPORT_REQUIRED:'+directory);
  }
  assert.ok(report.workflow_findings===undefined||Array.isArray(report.workflow_findings),'VALID_BROWSER_WORKFLOW_FINDINGS_REQUIRED:'+directory);
- if(manifest.workflow_revision===2)requireCorrectedBrowserEvidence(report,{judgeJourney:directory===hostedDirectory('browser-public-live')});
+ if(manifest.workflow_revision===2)requireCorrectedBrowserEvidence(report,{hostedJourney:directory===hostedDirectory('browser-public-live')});
  browser.push({kind:report.kind,url:report.url,checks:report.checks.length,finished_at:report.finished_at,report_sha256:digest(readFileSync(filename)),evidence_directory:directory,workflow_findings:report.workflow_findings??[]});
 }
 const workflowObservations=[];
@@ -92,10 +91,11 @@ const live=read(privatePath('live.json')),gas=read(privatePath('gas.json'));
 assert.equal(live.code_hash,manifest.code_hash);assert.ok(live.public_flow&&live.private_flow);
 assert.equal(gas.passed,true);assert.equal(gas.vault,manifest.vault);assert.equal(gas.code_hash,manifest.code_hash);
 assert.equal(manifest.private.private_round_verified,true);
-const workflowReview=read(argument('--workflow-review')??privatePath('workflow-audit','evidence.json'));
-const workflowReport=argument('--workflow-report')??(manifest.workflow_revision===2?'docs/v4/security-review-20261111.md':'docs/v4/workflow-audit.md');
-assert.match(workflowReport,/^docs\/v4\/[a-z0-9-]+\.md$/,'LOCAL_WORKFLOW_REPORT_REQUIRED');
-assert.ok(existsSync(path.join(repoRoot,workflowReport)),'EXISTING_WORKFLOW_REPORT_REQUIRED');
+const workflowReview=read(argument('--workflow-review')??privatePath('workflow-review','report.json'));
+const workflowReport=argument('--workflow-report')??privatePath('workflow-review','README.md');
+const workflowReportPath=path.resolve(repoRoot,workflowReport),relativeReportPath=path.relative(privatePath(),workflowReportPath);
+assert.ok(relativeReportPath&&!relativeReportPath.startsWith('..')&&!path.isAbsolute(relativeReportPath)&&path.extname(workflowReportPath)==='.md','PRIVATE_WORKFLOW_REPORT_REQUIRED');
+assert.ok(existsSync(workflowReportPath),'EXISTING_WORKFLOW_REPORT_REQUIRED');
 if(manifest.workflow_revision===2){
  requireServiceLayout(manifest);
  const currentHashes=Object.fromEntries(Object.keys(workflowReview.source_sha256??{}).map(filename=>[filename,digest(readFileSync(path.join(repoRoot,filename)))]));
@@ -132,7 +132,7 @@ for(const [name,value] of exported){
  assert.ok(!/ed25519:[1-9A-HJ-NP-Za-km-z]{85,}|\bsk-(?:proj-)?[A-Za-z0-9_-]{35,}/.test(text),'PUBLIC_EVIDENCE_SECRET_SCAN_FAILED:'+name);
  assert.ok(secrets.every(secret=>!text.includes(secret)),'PUBLIC_EVIDENCE_CREDENTIAL_FOUND:'+name);
 }
-const destination=path.join(repoRoot,'docs','v4'),backup=releasePath('prior-public-evidence');
+const destination=releasePath('metadata'),backup=releasePath('prior-release-metadata');
 mkdirSync(destination,{recursive:true});mkdirSync(backup,{recursive:true,mode:0o700});
 for(const [name,value] of exported){
  const target=path.join(destination,name),old=path.join(backup,name);

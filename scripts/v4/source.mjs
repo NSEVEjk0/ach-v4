@@ -13,8 +13,8 @@ const roots=[
  'services','web/app','web/components','web/lib','web/public','web/package.json','web/package-lock.json',
  'web/next.config.ts','web/postcss.config.mjs','web/tailwind.config.ts','web/tsconfig.json','web/.vercelignore',
  'scripts/v4','scripts/deploy-contract.mjs','scripts/create-testnet.mjs','tests/v4',
- 'package.json','package-lock.json','Cargo.toml','Cargo.lock','rust-toolchain.toml','README.md','docs/v4/README.md',
- 'ACH_V4_DESIGN_BRIEF.md','docs/design','docs/v4/workflow-audit.md',
+ 'package.json','package-lock.json','Cargo.toml','Cargo.lock','rust-toolchain.toml','LICENSE','README.md','.gitignore','docs',
+ 'packages/client/README.md','packages/client/LICENSE','packages/intents/README.md','packages/intents/LICENSE',
 ];
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 

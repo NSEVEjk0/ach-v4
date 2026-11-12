@@ -267,12 +267,12 @@ async function liveJourney(page,context){
   const original=settled,originalId=settled.session.id,originalRequests=structuredClone(seen),privateJob=original.jobs.find(job=>job.id==='run-'+seen.private.request_id);
   assert.ok(privateJob?.sealed_result);const originalAccounts=new Set(original.session.participants.map(participant=>participant.account_id));
   await navigateWorkspace(page,'Work');await page.getByRole('button',{name:'Start another test workspace',exact:true}).click();
-  let fresh=await until(()=>snapshot(context),state=>state.session.id!==originalId&&state.session.state==='READY','fresh-judge-workspace',480000);
+  let fresh=await until(()=>snapshot(context),state=>state.session.id!==originalId&&state.session.state==='READY','fresh-workspace',480000);
   assert.equal(fresh.jobs.length,0);assert.ok(fresh.session.participants.every(participant=>!originalAccounts.has(participant.account_id)));
   activeSessionId=fresh.session.id;for(const key of Object.keys(seen))delete seen[key];await checkpoint();
   await page.waitForTimeout(5100);fresh=await run('public');assert.equal(fresh.jobs.filter(job=>job.state==='COMPLETE').length,1);assert.equal(fresh.invoices.length,3);check('live-fresh-workspace-work-and-clearing');
   await navigateWorkspace(page,'Settings');await page.getByRole('combobox',{name:'Test workspace'}).locator(`option[value="${originalId}"]`).waitFor({state:'attached',timeout:30000});await page.getByRole('combobox',{name:'Test workspace'}).selectOption(originalId);
-  settled=await until(()=>snapshot(context),state=>state.session.id===originalId&&state.session.state==='READY','reopen-original-judge-workspace');
+  settled=await until(()=>snapshot(context),state=>state.session.id===originalId&&state.session.state==='READY','reopen-original-workspace');
   activeSessionId=originalId;Object.assign(seen,originalRequests);await checkpoint();
   assert.equal(settled.jobs.filter(job=>job.state==='COMPLETE').length,original.jobs.filter(job=>job.state==='COMPLETE').length);assert.deepEqual(settled.jobs.find(job=>job.id===privateJob.id).sealed_result,privateJob.sealed_result);
   await openPrivateHistory(page,privateJob,originalId);check('live-workspace-switch-preserves-history-and-private-results');
@@ -307,20 +307,20 @@ async function openPrivateHistory(page,job,sessionId){
  await page.getByRole('button',{name:'Close details',exact:true}).click();
 }
 
-async function resumeJudgeJourney(page,context){
- const previousPath=argument('--resume-report'),checkpointPath=argument('--resume-judge-workspaces');
- assert.ok(previousPath&&checkpointPath,'EXPLICIT_JUDGE_CONTINUATION_REQUIRED');
+async function resumeHostedJourney(page,context){
+ const previousPath=argument('--resume-report'),checkpointPath=argument('--resume-workspaces');
+ assert.ok(previousPath&&checkpointPath,'EXPLICIT_BROWSER_CONTINUATION_REQUIRED');
  const bytes=readFileSync(previousPath),previous=JSON.parse(bytes),checkpoint=JSON.parse(readFileSync(checkpointPath,'utf8'));
  assert.notEqual(path.resolve(previousPath),path.resolve(output,'report.json'),'PRESERVE_PREVIOUS_BROWSER_REPORT');
- for(const field of ['vault','code_hash','url'])assert.equal(previous[field],report[field],'JUDGE_CONTINUATION_RUNTIME_MISMATCH:'+field);
+ for(const field of ['vault','code_hash','url'])assert.equal(previous[field],report[field],'BROWSER_CONTINUATION_RUNTIME_MISMATCH:'+field);
  assert.equal(previous.passed,false);assert.deepEqual(previous.errors,[]);assert.equal((previous.workflow_findings??[]).length,0);
- for(const name of ['free-browser-onboarding','live-public-work-and-clearing','live-browser-withdrawal','live-browser-authenticated-redeposit','browser-private-ingress','live-private-work-and-clearing','live-third-identical-brief','live-fresh-workspace-work-and-clearing'])assert.ok(previous.checks.some(check=>check.name===name),'COMPLETED_JUDGE_STAGE_REQUIRED:'+name);
- assert.ok(!previous.checks.some(check=>check.name==='live-workspace-switch-preserves-history-and-private-results'),'UNFINISHED_JUDGE_STAGE_REQUIRED');
+ for(const name of ['free-browser-onboarding','live-public-work-and-clearing','live-browser-withdrawal','live-browser-authenticated-redeposit','browser-private-ingress','live-private-work-and-clearing','live-third-identical-brief','live-fresh-workspace-work-and-clearing'])assert.ok(previous.checks.some(check=>check.name===name),'COMPLETED_BROWSER_STAGE_REQUIRED:'+name);
+ assert.ok(!previous.checks.some(check=>check.name==='live-workspace-switch-preserves-history-and-private-results'),'UNFINISHED_BROWSER_STAGE_REQUIRED');
  assert.equal(checkpoint.previous_report_sha256,createHash('sha256').update(bytes).digest('hex'));
  report.continuation={previous_report:previousPath,previous_report_sha256:checkpoint.previous_report_sha256,previous_started_at:previous.started_at,previous_finished_at:previous.finished_at,previous_failure:previous.failure,completed_checks_retained:previous.checks.length};
  report.checks.unshift(...previous.checks);
  await page.goto(base+'/workspace',{waitUntil:'domcontentloaded'});await page.locator('.wallet-summary').waitFor({timeout:60000});
- let original=await until(()=>snapshot(context),state=>state.session.id===checkpoint.original_session_id&&state.session.state==='READY','resume-original-judge-workspace');
+ let original=await until(()=>snapshot(context),state=>state.session.id===checkpoint.original_session_id&&state.session.state==='READY','resume-original-workspace');
  const privateJob=original.jobs.find(job=>job.id===checkpoint.private_job_id);assert.equal(privateJob?.state,'COMPLETE');assert.ok(privateJob.sealed_result);
  assert.equal(createHash('sha256').update(JSON.stringify(privateJob.sealed_result)).digest('hex'),checkpoint.private_result_sha256);
  const verifiedIds=previous.checks.filter(check=>check.name==='live-public-work-and-clearing'||check.name==='live-private-work-and-clearing').flatMap(check=>check.round_ids);
@@ -330,7 +330,7 @@ async function resumeJudgeJourney(page,context){
   await navigateWorkspace(page,'Settings');const selector=page.getByRole('combobox',{name:'Test workspace'});
   await selector.locator(`option[value="${id}"]`).waitFor({state:'attached',timeout:60000});
   await until(()=>selector.isEnabled(),Boolean,'workspace-switch-control',60000);await selector.selectOption(id);
-  const state=await until(()=>snapshot(context),state=>state.session.id===id&&state.session.state==='READY','resume-judge-workspace-switch');
+  const state=await until(()=>snapshot(context),state=>state.session.id===id&&state.session.state==='READY','resume-workspace-switch');
   await page.getByRole('heading',{name:'Overview',exact:true,level:1}).waitFor({timeout:60000});return state;
  };
  const fresh=await selectWorkspace(checkpoint.fresh_session_id);assert.equal(fresh.jobs.filter(job=>job.state==='COMPLETE').length,1);assert.equal(fresh.invoices.length,3);assert.ok(fresh.invoices.every(invoice=>invoice.status==='SETTLED'));
@@ -358,7 +358,7 @@ try{
  const rejectedOrigin=await context.request.post(base+'/api/v4/session',{headers:{origin:'https://unrelated.example'},data:{}});assert.equal(rejectedOrigin.status(),403);assert.equal((await rejectedOrigin.json()).error,'ORIGIN_MISMATCH');check('cross-origin-session-rejected');
  if(fixturesOnly){const {uiFixtures}=await import('./browser-fixtures.mjs');await uiFixtures({browser,base,config,check,layout});}
  else{
- if(!smoke){if(argument('--resume-report'))await resumeJudgeJourney(page,context);else await liveJourney(page,context);}else if(!reuse)throw new Error('SMOKE_REQUIRES_EXISTING_SESSION');
+ if(!smoke){if(argument('--resume-report'))await resumeHostedJourney(page,context);else await liveJourney(page,context);}else if(!reuse)throw new Error('SMOKE_REQUIRES_EXISTING_SESSION');
  await inspectWorkspace(page);
  // A failed read retains the last confirmed amounts and disables writes.
  const before=await page.locator('.wallet-summary').innerText();await page.route('**/api/v4/snapshot',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'SERVICE_UNAVAILABLE'})}));

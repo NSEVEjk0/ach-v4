@@ -10,7 +10,7 @@ import {DemoSponsor}from '../demo/sponsor.mjs';
 const temporary=()=>mkdtempSync(path.join(tmpdir(),'ach-evaluation-'));
 const session=(id,family=id)=>({id,family_id:family,created_at_ms:Date.now(),expires_at_ms:Date.now()+3600000,state:'READY',participants:[],round_ids:[]});
 
-test('six independent judging briefs clear against actual Wasm without the former two-brief limit or duplicate payments',async()=>{
+test('six repeat briefs clear against actual Wasm without duplicate payments',async()=>{
  const h=await setup();try{
   let first,firstResult;
   for(let index=1;index<=6;index++){
@@ -70,7 +70,7 @@ test('renewable evaluation workspaces lift session-count caps while retaining na
  }finally{store.close();rmSync(directory,{recursive:true,force:true});}
 });
 
-test('a fresh judging workspace trades with independent Wasm wallets and can reopen its original settled work',async()=>{
+test('a fresh workspace trades with independent Wasm wallets and can reopen its original settled work',async()=>{
  const h=await setup();try{
   h.chain.now+=6000;
   const run=async(s,id)=>{const result=await h.coordinator.run(s,{request_id:id.repeat(32),brief:'Create an audited chart for this repeatable evaluation',mode:'report',privacy:'public'}),snapshot=await h.coordinator.snapshot(s),round=snapshot.rounds.find(round=>round.input.id===result.round_id);await h.coordinator.clear(s,{request_id:(id==='a'?'b':'d').repeat(32),selected_accounts:round.input.positions.map(position=>position.account_id),invoice_ids:round.input.invoice_ids,privacy:'public'});return h.coordinator.snapshot(s);};

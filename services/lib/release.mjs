@@ -6,9 +6,9 @@ export function requireCorrectionEvidence(review,manifest,currentHashes){
  if(!valid)throw new Error('CURRENT_CORRECTED_WORKFLOW_EVIDENCE_REQUIRED');
  return review;
 }
-export function requireCorrectedBrowserEvidence(report,{judgeJourney=false}={}){
+export function requireCorrectedBrowserEvidence(report,{hostedJourney=false}={}){
  const required=['live-third-identical-brief','live-fresh-workspace-work-and-clearing','live-workspace-switch-preserves-history-and-private-results'];
- const valid=report?.passed===true&&(report.workflow_findings===undefined||Array.isArray(report.workflow_findings)&&report.workflow_findings.length===0)&&(!judgeJourney||Array.isArray(report.checks)&&required.every(name=>report.checks.some(check=>check?.name===name)));
+ const valid=report?.passed===true&&(report.workflow_findings===undefined||Array.isArray(report.workflow_findings)&&report.workflow_findings.length===0)&&(!hostedJourney||Array.isArray(report.checks)&&required.every(name=>report.checks.some(check=>check?.name===name)));
  if(!valid)throw new Error('CURRENT_CORRECTED_BROWSER_EVIDENCE_REQUIRED');
  return report;
 }

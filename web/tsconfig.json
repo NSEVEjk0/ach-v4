@@ -29,15 +29,13 @@
     }
   },
   "include": [
+    "next-env.d.ts",
     ".next/types/**/*.ts",
     "app/**/*.ts",
     "app/**/*.tsx",
-    "components/v4/**/*.ts",
-    "components/v4/**/*.tsx",
-    "lib/v4.ts",
-    "lib/privacy.ts",
-    "lib/gateway.ts",
-    "next-env.d.ts",
+    "components/**/*.ts",
+    "components/**/*.tsx",
+    "lib/**/*.ts",
     "next.config.ts"
   ],
   "exclude": [

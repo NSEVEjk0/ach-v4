@@ -1,10 +1,9 @@
 /**
- * ACH Agent — the autonomous clearing house operator.
+ * ACH clearing operator for the compatibility client.
  *
  * The agent watches the clearing contract, analyzes the web of obligations,
  * and settles rounds when it finds a worthwhile compression opportunity with
- * all debtors funded. It keeps a reasoning log so humans can audit every
- * decision — the "AI judge" equivalent of a clearing house's back office.
+ * all debtors funded. Its operation log records settlement decisions.
  *
  * It also exposes the billing seam: agents arrive at debts by delivering
  * services and billing each other. POST /bill records that obligation on-chain

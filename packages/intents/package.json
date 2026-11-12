@@ -11,7 +11,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "exports": {
     ".": {
@@ -25,5 +26,6 @@
   },
   "peerDependencies": {
     "@ach/client": "^4.0.0"
-  }
+  },
+  "license": "MIT"
 }

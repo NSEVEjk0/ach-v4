@@ -16,7 +16,7 @@ export default function ArtifactView({ artifact, privateResult = false }: { arti
           <p className="form-hint">The checks cover data format and known source URLs. The supplied values remain your responsibility.</p>
           <h3>Reference packet</h3><p className="artifact-reference-summary">{artifact.references.summary}</p>
           <div className="reference-links">{artifact.references.references.map(reference => <a className="reference-link" href={reference.url} target="_blank" rel="noreferrer" key={reference.url}>{reference.name}<ArrowUpRight size={14} /></a>)}</div>
-          <details className="technical-details"><summary>Artifact record</summary><dl className="detail-list"><div><dt>SHA-256</dt><dd className="mono">{artifact.chart.sha256}</dd></div><div><dt>Planner</dt><dd>{artifact.planner.provider ?? artifact.planner.kind}{artifact.planner.model ? ' · ' + artifact.planner.model : ''}</dd></div></dl></details>
+          <details className="technical-details"><summary>Artifact record</summary><dl className="detail-list"><div><dt>SHA-256</dt><dd className="mono">{artifact.chart.sha256}</dd></div></dl></details>
           <span className="artifact-id mono">Artifact {shortId(artifact.chart.sha256)}</span>
         </div>
       </div>

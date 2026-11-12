@@ -13,7 +13,7 @@ run('cargo', ['build', '--locked', ...offline, '--release', '--target', 'wasm32-
 run('cargo', ['build', '--locked', ...offline, '--release', '--target', 'wasm32-wasip2', '-p', 'ach-private-netting']);
 run('npm', ['run', 'build', '--prefix', 'packages/client']);
 run('npm', ['run', 'build', '--prefix', 'packages/intents']);
-mkdirSync('docs/v4', { recursive: true });
+mkdirSync('target', { recursive: true });
 const artifact = (filename) => ({ path: filename, bytes: readFileSync(filename).length, sha256: createHash('sha256').update(readFileSync(filename)).digest('hex') });
 const manifest = {
   protocol_version: 4,
@@ -25,5 +25,5 @@ const manifest = {
     worker: artifact('target/wasm32-wasip2/release/ach-private-netting.wasm'),
   },
 };
-writeFileSync(path.resolve('docs/v4/build.json'), JSON.stringify(manifest, null, 2));
+writeFileSync(path.resolve('target/ach-build.json'), JSON.stringify(manifest, null, 2));
 console.log(JSON.stringify(manifest));

@@ -8,7 +8,10 @@ import path from 'node:path';
 import {privatePath,manifestPath,repoRoot,loadPrivateEnvironment}from '../../services/lib/paths.mjs';
 import {requireServiceLayout}from '../../services/lib/workflow.mjs';
 
-const config=JSON.parse(readFileSync(manifestPath,'utf8')),directory=privatePath('web-redesign-release','api');
+const releaseIndex=process.argv.indexOf('--release-dir');
+const releaseDirectory=releaseIndex<0?'web-redesign-release':process.argv[releaseIndex+1];
+assert.ok(typeof releaseDirectory==='string'&&/^[a-z0-9][a-z0-9-]*$/.test(releaseDirectory),'PRIVATE_WEB_RELEASE_DIRECTORY_REQUIRED');
+const config=JSON.parse(readFileSync(manifestPath,'utf8')),directory=privatePath(releaseDirectory,'api');
 requireServiceLayout(config);
 mkdirSync(directory,{recursive:true,mode:0o700});
 const stateFile=path.join(directory,'state.json');
@@ -38,7 +41,7 @@ if(process.argv.includes('--prepare')){
  save('request.headers','Authorization: Bearer '+credential+'\nContent-Type: application/json\n');
  const values={ACH_V4_SERVICE_TOKEN:process.env.ACH_V4_SERVICE_TOKEN,ACH_V4_DISCOVERY_URL:config.gateway.discovery_url,ACH_V4_DISCOVERY_KEY:config.gateway.signing_key,ACH_V4_NETWORK:config.network,ACH_V4_VAULT:config.vault,ACH_V4_COORDINATOR_URL:config.services.coordinator,ACH_V4_INTENTS_QUOTE_PREVIEWS:String(config.intents?.dry_quotes_enabled===true)};
  assert.ok(Object.values(values).every(Boolean),'COMPLETE_RUNTIME_CONFIGURATION_REQUIRED');
- save('environment-body.json',Object.entries(values).map(([key,value])=>({key,value,type:'encrypted',target:['preview','production'],comment:'ACH v4 verified runtime'})));
+ save('environment-body.json',Object.entries(values).map(([key,value])=>({key,value,type:'encrypted',target:['preview','production'],comment:'ACH runtime configuration'})));
  const files=[],hashes=[],web=path.join(repoRoot,'web');
  function visit(relative){
   const full=path.join(web,relative);

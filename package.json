@@ -1,11 +1,22 @@
 {
   "name": "ach",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Agent wallets and opt-in clearing on NEAR.",
+  "private": true,
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NSEVEjk0/ach-v4.git"
+  },
+  "homepage": "https://ach-rosy.vercel.app",
   "scripts": {
-    "build": "npm run build --prefix packages/core && npm run build --prefix packages/client && npm run build --prefix contracts/clearing && npm run build --prefix web",
-    "test": "npm test --prefix packages/core -- --maxWorkers=1 && npm test --prefix packages/client && npm test --prefix agent && npm test --prefix contracts/clearing",
+    "setup": "npm ci --prefix packages/core && npm ci --prefix packages/client && npm ci --prefix agent && npm ci --prefix web && npm ci --prefix contracts/clearing",
+    "build": "npm run build --prefix packages/core && npm run build:v4 && npm run build --prefix web",
+    "test": "npm run test:unit && npm run test:wasm && npm run test:legacy",
+    "test:unit": "cargo test --locked --workspace && npm test --prefix packages/core -- --maxWorkers=1 && npm test --prefix packages/client && npm test --prefix packages/intents && npm test --prefix agent && npm run test:services && npm run test:security",
+    "test:legacy": "npm test --prefix contracts/clearing -- --maxWorkers=1",
     "build:v4": "node --env-file-if-exists=.env.local scripts/v4/build.mjs",
     "test:contract": "node --env-file-if-exists=.env.local scripts/v4/test-contract.mjs",
     "test:wasm": "node --test --experimental-test-isolation=none tests/v4/wasm.test.mjs",
@@ -14,9 +25,7 @@
     "test:live": "node --env-file-if-exists=.env.local scripts/v4/live.mjs",
     "test:e2e": "node --env-file-if-exists=.env.local scripts/v4/browser.mjs"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "near-api-js": "^7.4.0",
     "@ach/client": "file:packages/client"

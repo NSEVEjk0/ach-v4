@@ -1,104 +1,87 @@
-# ACH v4 client
+# ACH client SDK
 
-Use Node 22.22.2 or newer and import from `@ach/client/v4`. This package is
-distributed as a downloadable tarball; it has not been published to npm.
+A signer-backed client for agent wallets, funded purchases and clearing on NEAR. Use Node 22.22.2 or newer.
+
+## Install
+
+Download the client and owner-routing packages from the [developer page](https://ach-rosy.vercel.app/developers), then install them in your project:
+
+```sh
+npm install ./ach-client-4.0.0.tgz ./ach-intents-4.0.0.tgz
+```
+
+The packages are distributed as tarballs and are not published to npm. Import the current vault client from `@ach/client/v4`.
+
+## Approve a purchase group
 
 ```js
-import {AchV4Client,V4NearTransport} from '@ach/client/v4';
-import {v4NetPlan} from '@ach/client/v4';
+import { AchV4Client, V4NearTransport, v4NetPlan } from '@ach/client/v4';
 
-// The manifest identifies the deployment. Your signer and persistent
-// V4Journal stay with your process, outside the coordinator.
-const transport=new V4NearTransport(accountId,deployment.rpc_url,signer,journal);
-const ach=new AchV4Client(deployment,transport,'agent');
+const transport = new V4NearTransport(
+  accountId, deployment.rpc_url, tradingSigner, persistentJournal
+);
+const ach = new AchV4Client(deployment, transport, 'agent');
 await ach.assertDeployment();
-const group=await ach.purchaseGroup(groupId);
-// Verify the complete agreed orders and their commitments. Recompute your
-// position from the invoice terms agreed before work, independently of a relay.
-const expectedNet=v4NetPlan(agreedInvoiceSpecs).positions
-  .find(position=>position.account_id===accountId).net;
-await ach.authorizePurchaseGroup(group,expectedNet);
-// Providers begin only after every participant approves and the group is FUNDED.
-const bill=await ach.invoice(invoiceId);
-// Check delivery, purchase ID, counterparties, price and artifact hash first.
+
+const group = await ach.purchaseGroup(groupId);
+const own = v4NetPlan(agreedInvoiceSpecs).positions.find(
+  position => position.account_id === accountId
+);
+if (!own) throw new Error('AGENT_NOT_INCLUDED');
+await ach.authorizePurchaseGroup(group, own.net);
+
+// Providers begin after every participant approves and the group is FUNDED.
+const bill = await ach.invoice(invoiceId);
+// Check the delivery, purchase ID, counterparties, price and artifact hash.
 await ach.acceptInvoice(bill);
-const payable=await ach.purchaseGroup(groupId);
-if(payable.status==='READY'){
-  const round=await ach.round(payable.round_id);
-  await ach.settleRound(round);
+
+const payable = await ach.purchaseGroup(groupId);
+if (payable.status === 'READY') {
+  await ach.settleRound(await ach.round(payable.round_id));
 }
 ```
 
-The current sponsored deployment uses `workflow_revision: 2`. Read its manifest
-and pinned vault identity before connecting. The November 10 deployment is
-retained as historical evidence. Use `v4PurchaseGroupId` for the
-proposer's group namespace and `v4FundedInvoiceId` for canonical public bill IDs.
-Every buyer owns its purchase IDs. No funded group can be split into separate
-settlements. Only net debtors reserve money; delivery acceptance transfers those
-same reservations into the complete READY round without reserving twice.
+Check the complete order set against your prior agreements before approving it. Use `v4PurchaseGroupId` for the proposer's group namespace and `v4FundedInvoiceId` for public bill IDs. Buyers own their purchase IDs.
 
-Withhold useful output until the entire group is READY or SETTLED. An incomplete
-COLLECTING or FUNDED group expires with `expirePurchaseGroup` at its exact agreed
-deadline, releasing cash and unused purchase allowance. READY payment commitments
-survive their deadline and subsequent trading-policy revocation.
+Only net debtors reserve funds. Accepting deliveries moves the existing reservation into the complete ready round. The group cannot be split into separate settlements. Release useful output when the entire group is `READY` or `SETTLED`.
 
-An owner client uses a separate owner signer and the role `owner`. It registers
-the account, sets/revokes the trading policy, deposits the allowlisted token, and
-withdraws. A function-call trading key must allow only trading/recovery methods;
-withdrawal and policy changes require the owner. The hosted sponsor owns the
-demonstration identities; independently operated agents retain their keys.
-Writes recheck the pinned deployment and workflow revision. A custom transport
-must implement `codeHash` when the manifest pins it; verification is required.
+An incomplete `COLLECTING` or `FUNDED` group can expire through `expirePurchaseGroup` at its agreed deadline, releasing reserved cash and unused purchase allowance. A `READY` commitment remains enforceable after its deadline and after trading authority is revoked.
 
-An independent account first needs a registration authorization from the vault's
-storage sponsor. Send the sponsor your account ID and chosen display name. The
-sponsor uses its own owner client; your registration, policy and trades use your
-own owner and trading signers. Registration authorization does not give the
-sponsor either of your keys.
+## Register an independent account
+
+Registration requires authorization from the vault's storage sponsor:
 
 ```js
-// The vault's storage sponsor performs this step with its own signer.
+// The storage sponsor uses its own signer.
 await storageSponsor.sponsorAccount(
   accountId, name, Date.now() + 60 * 60 * 1000, `invite:${accountId}:1`
 );
-// Your owner client registers the same name before that authorization expires.
+
+// The agent owner registers the same account name with a separate owner signer.
 await owner.register(name);
 await owner.setPolicy(policy, `policy:${accountId}:1`);
 ```
 
-Arrange account gas, settlement-token storage registration and test-token funding
-before depositing. The registration authorization sponsors storage in the vault;
-it does not itself fund your external account. The free browser session provisions
-and sponsors its three hosted identities automatically. A fourth independently
-signed account is covered by the actual-Wasm service integration tests.
+Arrange account gas, token storage registration and settlement-token funding before depositing. Storage sponsorship does not fund the external account. The browser app provisions its hosted test accounts automatically.
 
-Persist every journal operation before broadcast. Retry with the same operation
-ID and payload after a lost response. The transport reconciles the recorded
-transaction and resubmits the exact bytes only after a definite missing result.
-Use `V4MemoryJournal` only for temporary/local examples.
-Wrappers over the same signer serialize in one process. Other processes need
-distinct signing keys or their own single-writer coordination. `reconcile`
-observes an existing transport operation without signing or broadcasting; it
-is appropriate for an expired quote's uncertain source transaction.
+An owner client uses the role `owner` and a separate owner signer. Owners register accounts, manage trading policies, deposit and withdraw. Trading keys permit only scoped trading and recovery methods.
 
-Money uses decimal strings of integer six-decimal token units. `parseTestUSD`
-rejects excess decimals and `formatTestUSD` does not change a signed amount.
-Read `result.evidence`, invoice/round state and withdrawal state; submitted
-transactions, quotes and receivables are not spendable balance.
+## Transactions and amounts
 
-Private invoices use `v4PrivateInvoiceCommitment`, `encryptV4Invoice` and
-`v4PrivateInputCommitment`. Contributions require both parties' Ed25519
-signatures and are padded to 2048 plaintext bytes. A round includes at most six
-private bills. Before requesting netting, every participant signs
-`v4PrivateDisclosureHash(deployment,inputCommitment,members)` with its current
-trading key. Receipt-only verification publishes zero positions; signed netting
-publishes the selected group's net movements. Single-bill netting can reveal a
-price through those movements. Private balances and unlinkable payouts are not
-provided.
-Private orders also authorize their exact funded purchase group before work.
-The final verified receipt set and published positions must match that entire
-group. Receipt verification alone neither releases output nor grants a debit.
+Keep the deployment manifest, signer and persistent journal with the process that operates the account. Writes check the pinned vault and workflow revision. A custom transport must implement `codeHash` when the manifest pins it.
 
-The legacy `ClearingClient` export targets the preserved v2 contract. Use the
-explicit `/v4` entrypoint for the new vault. Tests and verified builds are not a
-security audit; the testnet vault still has an upgrade key.
+Persist every operation before broadcasting. Retry a lost response with the same operation ID and payload. The transport reconciles the recorded transaction before resubmitting the same bytes. `reconcile` observes an existing operation without signing or broadcasting. Use `V4MemoryJournal` for temporary examples.
+
+Transports sharing a signer serialize within one process. Separate processes need distinct signing keys or their own single-writer coordination.
+
+Amounts are decimal strings of integer token units. The test token uses six decimals. `parseTestUSD` rejects excess decimal places; `formatTestUSD` formats without changing the signed amount. Pending transactions and receivables are not available balances.
+
+## Private invoices
+
+Use `v4PrivateInvoiceCommitment`, `encryptV4Invoice` and `v4PrivateInputCommitment` for private contributions. Both parties sign each contribution, which is padded to 2048 plaintext bytes. A private round supports up to six bills.
+
+Before requesting netting, each participant signs `v4PrivateDisclosureHash` with its current trading key. Receipt processing alone publishes zero movements. Netting discloses the group's approved net positions, which must match its complete funded purchase group.
+
+Invoice contents are encrypted. Participant identities, timing and net movements remain public; a single bill's net movement can reveal its price.
+
+See the [developer guide](https://ach-rosy.vercel.app/developers) and the [owner-routing SDK](../intents/README.md).

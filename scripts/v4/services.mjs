@@ -1,6 +1,8 @@
 import {readFileSync,writeFileSync,mkdirSync,existsSync,chmodSync,readlinkSync,copyFileSync}from 'node:fs';
 import {spawnSync}from 'node:child_process';
 import {randomBytes}from 'node:crypto';
+import {homedir}from 'node:os';
+import {parseEnv}from 'node:util';
 import {Account,JsonRpcProvider,KeyPair,actions}from '../../packages/client/dist/near.js';
 import {StateStore}from '../../services/lib/store.mjs';import {durableActions}from '../../services/lib/transactions.mjs';
 import {v4UnknownTransaction,V4RpcProvider}from '../../packages/client/dist/v4.js';
@@ -18,7 +20,8 @@ if(process.argv.includes('--inspect')){
 }
 const rootIdentity=JSON.parse(readFileSync(privateRoot+'/root.json','utf8'));
 if(rootIdentity.account_id!==config.root)throw new Error('ROOT_IDENTITY_NAMESPACE_MISMATCH');
-const unitDir='/root/.config/systemd/user',unitPath=unitDir+'/'+layout.unit,envFile=privateRoot+'/services.env',pidFile=privateRoot+'/supervisor.pid';
+const unitDir=homedir()+'/.config/systemd/user',unitPath=unitDir+'/'+layout.unit,envFile=privateRoot+'/services.env',pidFile=privateRoot+'/supervisor.pid';
+if(!parseEnv(readFileSync(envFile,'utf8')).NEAR_AI_API_KEY?.trim())throw new Error('PLANNER_API_KEY_REQUIRED');
 const quote=value=>{if(/[\0\r\n]/.test(value))throw new Error('INVALID_SERVICE_PATH');return '"'+value.replaceAll('\\','\\\\').replaceAll('"','\\"').replaceAll('%','%%')+'"';};
 const unit='[Unit]\nDescription=ACH v4 revision 2 candidate services\nAfter=network-online.target\n\n[Service]\nType=simple\nWorkingDirectory='+root.replaceAll('%','%%')+'\nEnvironmentFile='+envFile.replaceAll('%','%%')+'\nExecStart='+[process.execPath,root+'/services/supervisor.mjs','--private-root',privateRoot,'--manifest',manifestPath].map(quote).join(' ')+'\nRestart=always\nRestartSec=2\nKillMode=control-group\n\n[Install]\nWantedBy=default.target\n';
 function verifiedSupervisor(pid){
@@ -65,12 +68,6 @@ config.gateway={discovery_url:'https://test.fastfs.io/'+publisher.account_id+'/o
 writeFileSync(manifestPath,JSON.stringify(config,null,2));
 if(!existsSync(privateRoot+'/cloudflared')&&existsSync(root+'/.local/v4/cloudflared'))copyFileSync(root+'/.local/v4/cloudflared',privateRoot+'/cloudflared');
 chmodSync(privateRoot+'/cloudflared',0o700);
-let env=readFileSync(envFile,'utf8');
-if(!/^NEAR_AI_API_KEY=/m.test(env)){
- const source=readFileSync('/root/sealwork-next/.env.local','utf8'),line=source.match(/^NEAR_AI_API_KEY=(.+)$/m);
- if(!line)throw new Error('SPONSORED_INFERENCE_KEY_UNAVAILABLE');
- env+='NEAR_AI_API_KEY='+line[1]+'\nACH_AI_MODEL=z-ai/glm-5.3-flash\n';writeFileSync(envFile,env,{mode:0o600});
-}
 for(const kind of ['research','visual','audit'])for(const purpose of ['storage','ingress']){
  const file=privateRoot+'/'+kind+'-'+purpose+'.key';if(!existsSync(file))writeFileSync(file,randomBytes(32).toString('hex'),{mode:0o600,flag:'wx'});
 }

@@ -8,7 +8,7 @@ const argument=name=>{const index=process.argv.indexOf(name);if(index<0)return;c
 const legacyRoot=path.join(repoRoot,'.local/v4');
 const rootArgument=argument('--private-root');
 export const privateRoot=path.resolve(repoRoot,rootArgument??process.env.ACH_V4_PRIVATE_ROOT??legacyRoot);
-const defaultManifest=privateRoot===legacyRoot?'docs/v4/deployment.json':path.join(privateRoot,'deployment.json');
+const defaultManifest=path.join(privateRoot,'deployment.json');
 export const manifestPath=path.resolve(repoRoot,argument('--manifest')??(rootArgument?defaultManifest:process.env.ACH_V4_MANIFEST??defaultManifest));
 export const outlayerPath=path.join(path.dirname(manifestPath),'outlayer.json');
 export const privatePath=(...parts)=>path.join(privateRoot,...parts);
