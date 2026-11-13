@@ -94,11 +94,14 @@ export class ServiceAgent{
    job.private_authorization=(await identity.client.authorizePrivatePurchase({purchase_id:id,terms_version:1,seller:provider.account_id,order_commitment})).value;this.store.saveJob(job);
   }
   const delivered=await this.dispatch(provider.kind,session,{order:job.order,signature:job.signature}),spec=delivered.invoice?.spec;
-  if(!spec||spec.buyer!==identity.account_id||spec.seller!==provider.account_id||spec.amount!==price||spec.purchase_id!==id||spec.terms_hash!==orderHash(this.config,job.order)||spec.artifact_hash!==job.order.expected_artifact_hash||delivered.artifact_commitment!==spec.artifact_hash)throw new Error('DELIVERY_OR_INVOICE_MISMATCH');
+  if(!spec||spec.buyer!==identity.account_id||spec.seller!==provider.account_id||spec.amount!==price||spec.purchase_id!==id||spec.terms_version!==1||spec.id!==v4FundedInvoiceId(this.config,{...job.order,terms_version:1})||spec.asset!==this.config.token||spec.service!==service||spec.expires_at_ms!==job.order.deadline_ms||spec.ready_at_ms>this.clock()||spec.terms_hash!==orderHash(this.config,job.order)||spec.artifact_hash!==job.order.expected_artifact_hash||delivered.artifact_commitment!==spec.artifact_hash)throw new Error('DELIVERY_OR_INVOICE_MISMATCH');
   let invoice,envelope;
   if(privacy==='private'){
    const contribution=job.contribution??delivered.contribution;
    if(!contribution?.spec||!contribution.salt||!Array.isArray(contribution.signatures))throw new Error('PRIVATE_CONTRIBUTION_MISSING');
+   // Bind every signed private term to the invoice checked against our order.
+   // A provider signature alone does not establish the buyer's consent.
+   if(v4InvoiceHash(this.config,contribution.spec)!==v4InvoiceHash(this.config,spec))throw new Error('PRIVATE_INVOICE_MISMATCH');
    const commitment=v4PrivateInvoiceCommitment(this.config,contribution.spec,contribution.salt),providerWallet=await identity.client.balance(provider.account_id);
    const sellerSignature=contribution.signatures.find(s=>s.account_id===provider.account_id);
    if(commitment!==delivered.invoice.hash||!sellerSignature||!providerWallet.policy||providerWallet.policy.revoked||sellerSignature.key_epoch!==providerWallet.policy.epoch||!verifyV4InvoiceSignature(providerWallet.policy.key,commitment,sellerSignature.signature))throw new Error('PRIVATE_SIGNATURE_INVALID');

@@ -11,7 +11,9 @@ export default function NettingTest({data,pending,stale,onNewWorkspace,onRefresh
  const jobs=data.test_jobs??[],active=jobs.some(j=>['STARTED','WAITING'].includes(j.state)),working=data.jobs.some(j=>['STARTED','WAITING'].includes(j.state));
  const needsWallets=!data.session.judge_testing||count>data.session.participants.length;
  const bills=privacy==='private'?Math.min(count,6):count;
- const disabled=pending||sending||active||working||stale||privacy==='private'&&!data.privacy.enabled;
+ // A fresh workspace does not use this workspace's balances or private worker.
+ // Keep those checks for starting a round, and preserve all in-flight guards.
+ const disabled=pending||sending||active||working||!needsWallets&&(stale||privacy==='private'&&!data.privacy.enabled);
  useEffect(()=>{setCount(data.session.agent_count??3);operation.current=null;setError('');},[data.session.id]);
  useEffect(()=>{if(operation.current&&jobs.some(j=>j.id==='test-netting-'+operation.current?.id&&['COMPLETE','FAILED'].includes(j.state)))operation.current=null;},[jobs]);
  async function run(){

@@ -13,9 +13,9 @@ export function localWebModules({components=false}={}){
   const source=readFileSync(fileURLToPath(new URL(location,import.meta.url)),'utf8').replace("from 'next/server'",`from '${pathToFileURL(require.resolve('next/server')).href}'`).replace(/from '\.\.\/\.\.\/\.\.\/\.\.\/lib\/(gateway|request)'/g,(_,helper)=>`from './${helper}.mjs'`).replace(/from '(\.\/[^']+)'/g,(_,relative)=>`from '${relative.endsWith('.mjs')?relative:relative+'.mjs'}'`);
   writeFileSync(path.join(directory,name+'.mjs'),ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2023,module:ts.ModuleKind.ES2022}}).outputText,{mode:0o600});
  }
- if(components)for(const name of ['Interface','WorkForm']){
+ if(components)for(const name of ['Interface','WorkForm','NettingTest']){
   const source=readFileSync(fileURLToPath(new URL(`../../web/components/v4/${name}.tsx`,import.meta.url)),'utf8');
-  const compiled=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2023,module:ts.ModuleKind.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText.replace(/from (['"])(react\/jsx-runtime|lucide-react)\1/g,(_,quote,specifier)=>`from '${pathToFileURL(require.resolve(specifier)).href}'`).replace(/from ['"]\.\/Interface['"]/g,"from './Interface.mjs'");
+  const compiled=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2023,module:ts.ModuleKind.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText.replace(/from (['"])(react|react\/jsx-runtime|lucide-react)\1/g,(_,quote,specifier)=>`from '${pathToFileURL(require.resolve(specifier)).href}'`).replace(/from ['"]\.\/Interface['"]/g,"from './Interface.mjs'").replace(/from ['"]\.\.\/\.\.\/lib\/v4['"]/g,"from './v4.mjs'");
   writeFileSync(path.join(directory,name+'.mjs'),compiled,{mode:0o600});
  }
  return{url:name=>pathToFileURL(path.join(directory,name+'.mjs')).href,nextServerUrl:pathToFileURL(require.resolve('next/server')).href,reactUrl:pathToFileURL(require.resolve('react')).href,reactServerUrl:pathToFileURL(require.resolve('react-dom/server')).href,cleanup:()=>rmSync(directory,{recursive:true,force:true})};
