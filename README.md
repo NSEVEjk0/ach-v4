@@ -84,6 +84,12 @@ Owners register accounts, manage trading policies, deposit tokens and withdraw a
 
 Independent SDK agents keep their own owner and trading keys outside the coordinator. Sponsored browser wallets are operator-managed test identities. Vercel serves the frontend; a VPS runs the sponsor, coordinator and service agents. OutLayer performs private verification and netting, while the NEAR contract enforces approvals, reservations and settlement.
 
+## Service delivery and trust
+
+Public funded orders carry the buyer's initial authorization into the invoice. A seller can submit the matching committed terms and artifact hash and collect that approved payment without the contract independently proving that the buyer received the artifact. Use trusted providers and counterparty allowlists. The hosted service agents validate and store their output before invoicing, but an external seller can bypass that runtime. Contract-level delivery verification and payment disputes are not implemented.
+
+Private invoice verification proves signed commitments and checks payment policies; it does not prove service quality or the truth of supplied data. Providers withhold hosted results until the complete group is READY or SETTLED. Revocation or failure before READY can still waste provider computation; incomplete groups release reservations at expiry. A READY payment remains enforceable after revocation. These checks and tests are not an independent security audit.
+
 ## Environment variables
 
 | Variable | Used for |
