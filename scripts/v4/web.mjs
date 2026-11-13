@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import {readFileSync,writeFileSync,mkdirSync,existsSync,chmodSync}from 'node:fs';
-import {spawn}from 'node:child_process';
+import {readFileSync,writeFileSync,mkdirSync,existsSync,chmodSync,mkdtempSync,copyFileSync,unlinkSync}from 'node:fs';
+import {spawn,execFileSync}from 'node:child_process';
 import {createPublicKey,verify}from 'node:crypto';
 import {parseEnv}from 'node:util';
 import path from 'node:path';
@@ -14,10 +14,10 @@ const stateFile=path.join(output,'deployment.json'),state=existsSync(stateFile)?
 state.repository_pushed=config.source?.repository_pushed===true;
 assert.equal(state.vault,config.vault,'WEB_RELEASE_NAMESPACE_MISMATCH');
 const save=()=>writeFileSync(stateFile,JSON.stringify(state,null,2),{mode:0o600});
-async function command(args,{input,env=process.env,label=args[0]}={}){
+async function command(args,{input,env=process.env,label=args[0],cwd=web}={}){
  console.log(JSON.stringify({phase:'web-'+label,state:'working'}));
  const result=await new Promise((resolve,reject)=>{
-  const child=spawn('vercel',args,{cwd:web,env,stdio:['pipe','pipe','pipe']});let stdout='',stderr='';
+  const child=spawn('vercel',args,{cwd,env,stdio:['pipe','pipe','pipe']});let stdout='',stderr='';
   child.stdout.on('data',b=>stdout+=b);child.stderr.on('data',b=>stderr+=b);child.on('error',reject);
   child.on('close',code=>resolve({code,stdout,stderr}));child.stdin.end(input??'');
  });
@@ -25,6 +25,21 @@ async function command(args,{input,env=process.env,label=args[0]}={}){
  writeFileSync(path.join(output,label.replaceAll(/[^a-zA-Z0-9-]/g,'-')+'.log'),result.stdout+'\n'+result.stderr,{mode:0o600});
  if(result.code!==0)throw new Error('VERCEL_COMMAND_FAILED:'+label);
  return result;
+}
+function deploymentSource(){
+ // The project builds from web/. Upload committed web files with that parent
+ // directory intact; runtime keys, databases and local env files stay private.
+ const source=mkdtempSync(path.join(output,'source-')),archive=path.join(source,'web.tar');
+ const commit=execFileSync('git',['rev-parse','HEAD'],{cwd:repoRoot,encoding:'utf8'}).trim();
+ assert.equal(execFileSync('git',['status','--porcelain','--untracked-files=no'],{cwd:repoRoot,encoding:'utf8'}).trim(),'','COMMITTED_WEB_SOURCE_REQUIRED');
+ execFileSync('git',['archive','--format=tar','--output',archive,commit,'web'],{cwd:repoRoot});
+ execFileSync('tar',['-xf',archive,'-C',source]);unlinkSync(archive);
+ assert.ok(existsSync(path.join(source,'web','package-lock.json')),'WEB_DEPLOYMENT_ROOT_REQUIRED');
+ const link=path.join(web,'.vercel','project.json'),project=JSON.parse(readFileSync(link,'utf8'));
+ assert.equal(project.projectId,'prj_zrf0MeNBv2Cdj76I7HK09gaCBZVa','EXPECTED_ACH_PROJECT_REQUIRED');
+ mkdirSync(path.join(source,'.vercel'),{mode:0o700});
+ copyFileSync(link,path.join(source,'.vercel','project.json'));chmodSync(path.join(source,'.vercel','project.json'),0o600);
+ state.source_commit=commit;save();return source;
 }
 async function discovery(){
  const r=await fetch(config.gateway.discovery_url,{signal:AbortSignal.timeout(20000),cache:'no-store'});assert.ok(r.ok,'GATEWAY_DISCOVERY_UNAVAILABLE');const d=await r.json();
@@ -73,8 +88,9 @@ try{
  assert.ok(live.public_flow&&live.private_flow&&live.code_hash===config.code_hash,'VERIFIED_LIVE_PUBLIC_AND_PRIVATE_FLOWS_REQUIRED');
  assert.ok(config.private.private_round_verified,'VERIFIED_PRIVATE_CAPABILITY_REQUIRED');
  const local=JSON.parse(readFileSync(privatePath('browser-local','report.json'),'utf8'));assert.ok(local.passed&&local.vault===config.vault,'COMPLETE_LOCAL_BROWSER_JOURNEY_REQUIRED');
+ const source=deploymentSource();
  await environment('preview');
- const preview=deployedUrl(await command(['deploy','--yes','--project','ach','--json'],{label:'preview-deploy'}));state.preview=preview;save();await verifyHosted(preview,true);state.preview_config_verified_at=new Date().toISOString();save();
+ const preview=deployedUrl(await command(['deploy','--yes','--project','ach','--json'],{label:'preview-deploy',cwd:source}));state.preview=preview;save();await verifyHosted(preview,true);state.preview_config_verified_at=new Date().toISOString();save();
  // vercel curl retrieves the project's existing automation-bypass entry through
  // its credential store. Pull it privately for the browser, never into args.
  const previewEnvironment=path.join(output,'preview-deployment.env');await command(['env','pull',previewEnvironment,'--environment','preview','--project','ach','--yes'],{label:'preview-environment'});chmodSync(previewEnvironment,0o600);
@@ -83,9 +99,9 @@ try{
  await browser(preview);state.preview_browser_verified_at=new Date().toISOString();save();
  if(process.argv.includes('--preview-only')){console.log(JSON.stringify({preview,verification:'passed',public_cutover:false,repository_pushed:config.source?.repository_pushed===true}));process.exit(0);}
  await environment('production');
- const production=deployedUrl(await command(['deploy','--prod','--skip-domain','--yes','--project','ach','--json'],{label:'production-staged-deploy'}));state.production=production;save();await verifyHosted(production);await browser(production);state.production_browser_verified_at=new Date().toISOString();save();
+ const production=deployedUrl(await command(['deploy','--prod','--skip-domain','--yes','--project','ach','--json'],{label:'production-staged-deploy',cwd:source}));state.production=production;save();await verifyHosted(production);await browser(production);state.production_browser_verified_at=new Date().toISOString();save();
  await command(['promote',production,'--yes'],{label:'production-promote'});
  await verifyHosted('https://ach-rosy.vercel.app');await browser('https://ach-rosy.vercel.app');
- state.public_url='https://ach-rosy.vercel.app';state.promoted_at=new Date().toISOString();save();
+ state.public_url='https://ach-rosy.vercel.app';state.promoted_at=new Date().toISOString();delete state.failure;save();
  console.log(JSON.stringify({web_deployed:state.public_url,preview,exact_vault_verified:config.vault,repository_pushed:config.source?.repository_pushed===true}));
 }catch(error){state.failure={type:error.name,code:error.message};save();console.error(JSON.stringify({web_deployment:'failed',reason:error.message,repository_pushed:config.source?.repository_pushed===true}));process.exitCode=1;}
