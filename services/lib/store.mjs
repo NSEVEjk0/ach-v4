@@ -52,11 +52,34 @@ export class StateStore {
     const job={id,session_id:sessionId,request_hash:requestHash,state:'STARTED',payload,created_at_ms:Date.now(),...(privateRecord?{sealed:true}:{})};
     this.db.prepare('INSERT INTO jobs VALUES(?,?,?,?,?)').run(id,sessionId,requestHash,job.state,this.encodeJob(job));return job;
   }
+  assertSessionJobAdmission(id,sessionId){
+    // Judge tests use the same trading keys as the separate service processes.
+    // Reserve the workspace before starting either side of that shared work.
+    if(id.startsWith('test-netting-')){
+      if(this.db.prepare("SELECT 1 FROM jobs WHERE session_id=? AND id<>? AND state IN ('STARTED','WAITING') AND (id LIKE 'run-%' OR id LIKE 'clear-%' OR id LIKE 'test-netting-%') LIMIT 1").get(sessionId,id))throw new Error('SESSION_PAYMENT_IN_PROGRESS');
+    }else if(id.startsWith('run-')||id.startsWith('clear-')){
+      if(this.db.prepare("SELECT 1 FROM jobs WHERE session_id=? AND id<>? AND state IN ('STARTED','WAITING') AND id LIKE 'test-netting-%' LIMIT 1").get(sessionId,id))throw new Error('SESSION_NETTING_TEST_IN_PROGRESS');
+    }
+  }
+  startSessionJob(id,sessionId,payload,{kind,maxJobs=12}={}){
+    const prefix=kind==='test'?'test-netting-':kind==='clear'?'clear-':null;
+    if(!prefix||!id.startsWith(prefix)||!Number.isSafeInteger(maxJobs)||maxJobs<1)throw new Error('INVALID_SESSION_JOB_ADMISSION');
+    this.db.exec('BEGIN IMMEDIATE');
+    try{
+      const old=this.job(id);
+      // Validate replay identity before any admission or quota response.
+      if(old){const job=this.startJob(id,sessionId,payload);if(job.state==='COMPLETE'){this.db.exec('COMMIT');return job;}}
+      this.assertSessionJobAdmission(id,sessionId);
+      if(!old&&this.db.prepare('SELECT COUNT(*) AS n FROM jobs WHERE session_id=? AND id LIKE ?').get(sessionId,prefix+'%').n>=maxJobs)throw new Error('SESSION_CLEARING_QUOTA_REACHED');
+      const job=this.startJob(id,sessionId,payload);this.db.exec('COMMIT');return job;
+    }catch(error){this.db.exec('ROLLBACK');throw error;}
+  }
   startBrief(id,sessionId,payload,{now=Date.now(),intervalMs=5000,maxPlannerCallsPerDay=2000}={}){
     if(!Number.isSafeInteger(now)||!Number.isSafeInteger(intervalMs)||intervalMs<0||!Number.isSafeInteger(maxPlannerCallsPerDay)||maxPlannerCallsPerDay<2)throw new Error('INVALID_BRIEF_ADMISSION');
     this.db.exec('BEGIN IMMEDIATE');
     try{
-      if(this.job(id)){const job=this.startJob(id,sessionId,payload);this.db.exec('COMMIT');return job;}
+      if(this.job(id)){const job=this.startJob(id,sessionId,payload);if(job.state!=='COMPLETE')this.assertSessionJobAdmission(id,sessionId);this.db.exec('COMMIT');return job;}
+      this.assertSessionJobAdmission(id,sessionId);
       if(this.db.prepare("SELECT 1 FROM jobs WHERE session_id=? AND id LIKE 'run-%' AND state IN ('STARTED','WAITING') LIMIT 1").get(sessionId))throw new Error('SESSION_BRIEF_IN_PROGRESS');
       const admission=this.db.prepare('SELECT last_started_at FROM brief_admissions WHERE session_id=?').get(sessionId);
       if(admission&&now-admission.last_started_at<intervalMs)throw new Error('BRIEF_RATE_LIMITED');
@@ -81,7 +104,18 @@ export class StateStore {
       this.db.exec('COMMIT');return used+1;
     }catch(error){this.db.exec('ROLLBACK');throw error;}
   }
-  saveJob(job){this.db.prepare('UPDATE jobs SET state=?,data=? WHERE id=?').run(job.state,this.encodeJob(job),job.id);}
+  saveJob(job){
+    const active=['STARTED','WAITING'].includes(job.state),shared=['run-','clear-','test-netting-'].some(prefix=>job.id.startsWith(prefix));
+    if(!active||!shared){this.db.prepare('UPDATE jobs SET state=?,data=? WHERE id=?').run(job.state,this.encodeJob(job),job.id);return;}
+    this.db.exec('BEGIN IMMEDIATE');
+    try{
+      const old=this.job(job.id);
+      // Failed work can become recoverable after a delayed chain proof. Its
+      // revival must acquire admission atomically, just like a fresh request.
+      if(old&&!['STARTED','WAITING'].includes(old.state))this.assertSessionJobAdmission(job.id,job.session_id);
+      this.db.prepare('UPDATE jobs SET state=?,data=? WHERE id=?').run(job.state,this.encodeJob(job),job.id);this.db.exec('COMMIT');
+    }catch(error){this.db.exec('ROLLBACK');throw error;}
+  }
   jobs(sessionId){return this.db.prepare('SELECT data FROM jobs WHERE session_id=? ORDER BY rowid').all(sessionId).map(r=>this.decodeJob(r.data));}
   event(sessionId,kind,reference,data={}){this.db.prepare('INSERT INTO events(session_id,at_ms,kind,reference,data)VALUES(?,?,?,?,?)').run(sessionId,Date.now(),kind,reference,JSON.stringify(data));}
   eventOnce(sessionId,kind,reference,data={}){this.db.prepare('INSERT INTO events(session_id,at_ms,kind,reference,data) SELECT ?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM events WHERE session_id=? AND kind=? AND reference=?)').run(sessionId,Date.now(),kind,reference,JSON.stringify(data),sessionId,kind,reference);}

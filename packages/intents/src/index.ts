@@ -3,7 +3,7 @@ import {routeJson} from './http.js';
 export const INTENTS_STATUS = ["KNOWN_DEPOSIT_TX", "PENDING_DEPOSIT", "INCOMPLETE_DEPOSIT", "PROCESSING", "SUCCESS", "REFUNDED", "FAILED"] as const;
 export type IntentsStatus = typeof INTENTS_STATUS[number];
 export type RouteState = "QUOTED" | "WITHDRAWING" | "AWAITING_DEPOSIT" | "RECONCILING_SOURCE" | "INCOMPLETE_DEPOSIT" | "PROCESSING" | "AWAITING_RECEIPT" | "RECEIVED" | "REFUNDED" | "FAILED" | "EXPIRED";
-export interface IntentsToken { assetId: string; decimals: number; blockchain: string; symbol: string; contractAddress?: string }
+export interface IntentsToken { assetId: string; decimals: number; blockchain: string; symbol: string; contractAddress?: string; price?: number; priceUpdatedAt?: string }
 export interface QuoteRequest {
   dry: boolean; swapType: "EXACT_INPUT"; slippageTolerance: number; originAsset: string;
   destinationAsset: string; amount: string; refundTo: string; recipient: string; deadline: string;
@@ -18,10 +18,14 @@ export interface Route {
   known_source_tx?: string; receipt?: DestinationReceipt; checked_at?: string; approval_hash?: string; destination_chain?: string; destination_contract?: string;
 }
 const units = (s: string) => { if (!/^(0|[1-9]\d*)$/.test(s) || s.length > 78) throw new Error("INVALID_ROUTE_AMOUNT"); return BigInt(s); };
+/** Catalogue identifiers cover NEP-141, NEP-245 and Chain Signatures assets. */
+export function isIntentsAssetId(value: unknown): value is string {
+  return typeof value === 'string' && /^(?:nep141|nep245|1cs_v1):[^\s\u0000-\u001f\u007f]{1,244}$/.test(value);
+}
 export function validateQuoteRequest(r: QuoteRequest, now = Date.now()): void {
   if (typeof r.dry !== "boolean" || !["SIMPLE", "MEMO"].includes(r.depositMode)) throw new Error("UNSUPPORTED_ROUTE_MODE");
-  if (!r.originAsset.startsWith("nep141:") || !r.destinationAsset.startsWith("nep141:") || r.originAsset === r.destinationAsset) throw new Error("INVALID_ROUTE_ASSET");
-  if (!units(r.amount) || !r.recipient || !r.refundTo || r.recipient.length > 128 || r.refundTo.length > 128) throw new Error("INVALID_ROUTE_IDENTITY");
+  if (!isIntentsAssetId(r.originAsset) || !isIntentsAssetId(r.destinationAsset) || r.originAsset === r.destinationAsset) throw new Error("INVALID_ROUTE_ASSET");
+  if (!units(r.amount) || ![r.recipient, r.refundTo].every(value => typeof value === 'string' && value.length >= 2 && value.length <= 512 && !/[\s\u0000-\u001f\u007f]/.test(value))) throw new Error("INVALID_ROUTE_IDENTITY");
   if (r.depositType !== "ORIGIN_CHAIN" || r.refundType !== "ORIGIN_CHAIN" || r.recipientType !== "DESTINATION_CHAIN" || r.swapType !== "EXACT_INPUT") throw new Error("UNSUPPORTED_ROUTE_MODE");
   if (!Number.isInteger(r.slippageTolerance) || r.slippageTolerance < 0 || r.slippageTolerance > 300) throw new Error("SLIPPAGE_LIMIT");
   const expiry = Date.parse(r.deadline); if (!Number.isFinite(expiry) || expiry <= now || expiry > now + 2 * 60 * 60 * 1000) throw new Error("INVALID_QUOTE_DEADLINE");

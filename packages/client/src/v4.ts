@@ -1,5 +1,6 @@
 import { createHash, createPublicKey, verify as cryptoVerify, randomBytes, generateKeyPairSync, diffieHellman, hkdfSync, createCipheriv } from "node:crypto";
 import { Account, JsonRpcProvider, SignedTransaction, actions, baseEncode } from "near-api-js";
+import { RpcError } from "near-api-js/rpc-errors";
 import type { Signer, KeyPairString } from "near-api-js";
 
 export type V4Units = string;
@@ -232,6 +233,7 @@ export function v4UnknownTransaction(error: unknown): boolean {
   return /UNKNOWN_TRANSACTION|UnknownTransaction|TransactionDoesNotExist|transaction.*(?:does not|doesn't) exist/i.test(`${e?.type ?? ''} ${e?.name ?? ''} ${e?.message ?? ''}`);
 }
 const rpcCooldowns = new Map<string,number>();
+const rpcRetryWaitMs = 2000;
 /** Retry transport failures with the same RPC payload. Contract errors are final. */
 export class V4RpcProvider extends JsonRpcProvider {
   private connections: JsonRpcProvider[];
@@ -249,13 +251,21 @@ export class V4RpcProvider extends JsonRpcProvider {
         if(blocked>Date.now()){earliest=Math.min(earliest,blocked);continue;}
         try{return await provider.sendJsonRpc(method,params);}
         catch(error){
+          if(error instanceof RpcError)throw error;
           const e=error as Error&{cause?:number};
           if(![408,429,500,502,503,504].includes(e.cause??0)&&!/fetch failed|Failed to fetch|FetchError|timeout/i.test(e.message))throw error;
           const seconds=Number(e.message.match(/retry after (\d+) seconds/i)?.[1]??(e.cause===429?30:2));
-          const until=Date.now()+Math.min(60,Math.max(1,seconds))*1000;rpcCooldowns.set(endpoint,until);earliest=Math.min(earliest,until);
+          // Preserve provider backoff, including long rate limits and a longer
+          // cooldown reported by another in-flight request to the same RPC.
+          const delay=Number.isFinite(seconds)?Math.max(1,seconds)*1000:30000;
+          const until=Math.max(rpcCooldowns.get(endpoint)??0,Date.now()+delay);rpcCooldowns.set(endpoint,until);earliest=Math.min(earliest,until);
         }
       }
-      if(cycle===0&&Number.isFinite(earliest))await new Promise(resolve=>setTimeout(resolve,Math.min(30000,Math.max(0,earliest-Date.now()))));
+      const wait=Math.max(0,earliest-Date.now());
+      // The durable caller can retry later. Waiting past this short budget
+      // would still leave every endpoint blocked and delay wallet progress.
+      if(cycle===0&&Number.isFinite(earliest)&&wait<=rpcRetryWaitMs){if(wait)await new Promise(resolve=>setTimeout(resolve,wait));}
+      else break;
     }
     throw new Error('RPC_UNAVAILABLE');
   };

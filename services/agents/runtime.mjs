@@ -74,7 +74,14 @@ export class ServiceAgent{
   if(!provider)throw new Error('PROVIDER_UNAVAILABLE');
   const wallet=await identity.client.balance(),price=SERVICES[service].price,id=purchaseId(parent,service);
   const body={service,input,purchase_id:id,buyer:identity.account_id,seller:provider.account_id,asset:this.config.token,price,privacy};
+  const previous=this.store.job('buy-'+id);
   let job=this.store.startJob('buy-'+id,session.id,body);if(job.state==='COMPLETE')return job.result;
+  if(!previous&&privacy==='private'){
+   // Persist the choice before staging a receipt. Purchases created by an
+   // older runtime retain per-receipt verification when they resume.
+   job.private_verification_mode=this.config.private?.batch_funded_invoices===true?'funded-group':'receipt';
+   this.store.saveJob(job);
+  }
   if(!wallet.policy||wallet.policy.revoked||wallet.policy.expires_at_ms<=this.clock()||BigInt(price)>BigInt(wallet.policy.max_invoice))throw new Error('AGENT_PURCHASE_BUDGET_EXCEEDED');
   const prepared=this.store.job('order-'+id);
   if(!prepared||prepared.session_id!==session.id)throw new Error('BUYER_FUNDED_ORDER_REQUIRED');
@@ -102,9 +109,10 @@ export class ServiceAgent{
    }
    const encryption=await identity.client.privateEncryptionKey();if(!encryption)throw new Error('PRIVATE_MODE_UNAVAILABLE');
    envelope=job.envelope??encryptV4Invoice(this.config,encryption,job.contribution);job.envelope=envelope;this.store.saveJob(job);
-   await this.dispatch(provider.kind,session,{accept_private:job.contribution,purchase_id:id});
-   if(!this.verifyPrivate||(await this.verifyPrivate(session,{envelope,parties:[spec.buyer,spec.seller]})).verified!==true)throw new Error('PRIVATE_PROCESSING');
-   invoice={...delivered.invoice,status:'ACCEPTED',private:true,charge_id:envelope.nullifier};
+   const batched=job.private_verification_mode==='funded-group'&&Boolean(job.order.funding_group_id);
+   await this.dispatch(provider.kind,session,{accept_private:job.contribution,purchase_id:id,verification_mode:batched?'funded-group':'receipt'});
+   if(!batched&&(!this.verifyPrivate||(await this.verifyPrivate(session,{envelope,parties:[spec.buyer,spec.seller]})).verified!==true))throw new Error('PRIVATE_PROCESSING');
+   invoice={...delivered.invoice,status:batched?'SIGNED':'ACCEPTED',private:true,charge_id:envelope.nullifier};
   }else{
    if(delivered.invoice.hash!==v4InvoiceHash(this.config,spec))throw new Error('INVOICE_HASH_MISMATCH');
    invoice=(await identity.client.acceptInvoice(delivered.invoice)).value;
@@ -173,9 +181,11 @@ export class ServiceAgent{
   let invoice=(await identity.client.proposeInvoice(job.spec)).value;invoice=(await identity.client.acceptInvoice(invoice)).value;
   job={...job,state:'COMPLETE',result:{artifact_commitment:job.spec.artifact_hash,invoice,bills:job.dependencies??[],envelopes:job.envelopes??[]}};this.store.saveJob(job);return job.result;
  }
- async acceptPrivate(session,{accept_private:contribution,purchase_id}){
+ async acceptPrivate(session,{accept_private:contribution,purchase_id,verification_mode='receipt'}){
   const job=this.store.job('sell-'+purchase_id);
   if(!job?.contribution||job.session_id!==session.id||job.payload.order.privacy!=='private')throw new Error('PRIVATE_PURCHASE_NOT_FOUND');
+  if(!['receipt','funded-group'].includes(verification_mode)||verification_mode==='funded-group'&&!job.payload.order.funding_group_id)throw new Error('PRIVATE_VERIFICATION_MODE_REQUIRED');
+  if(job.private_verification_mode&&job.private_verification_mode!==verification_mode)throw new Error('PRIVATE_VERIFICATION_MODE_CONFLICT');
   const hash=v4PrivateInvoiceCommitment(this.config,job.spec,job.contribution.salt);
   if(v4PrivateInvoiceCommitment(this.config,contribution.spec,contribution.salt)!==hash||contribution.signatures.length!==2)throw new Error('PRIVATE_INVOICE_MISMATCH');
   const identity=await this.getIdentity(session.id),signers=new Set();
@@ -184,8 +194,9 @@ export class ServiceAgent{
    if(![job.spec.buyer,job.spec.seller].includes(s.account_id)||signers.has(s.account_id)||!b.policy||b.policy.revoked||s.key_epoch!==b.policy.epoch||!verifyV4InvoiceSignature(b.policy.key,hash,s.signature))throw new Error('PRIVATE_SIGNATURE_INVALID');signers.add(s.account_id);
   }
   const encryption=await identity.client.privateEncryptionKey();if(!encryption)throw new Error('PRIVATE_MODE_UNAVAILABLE');
+  job.private_verification_mode=verification_mode;
   job.contribution=contribution;job.envelope=job.envelope??encryptV4Invoice(this.config,encryption,contribution);job.state='COMPLETE';
-  job.result={artifact_commitment:job.spec.artifact_hash,invoice:{spec:job.spec,hash,charge_id:job.envelope.nullifier,status:'ACCEPTED',private:true},envelope:job.envelope,bills:job.dependencies??[],envelopes:job.envelopes??[]};this.store.saveJob(job);return{accepted:true};
+  job.result={artifact_commitment:job.spec.artifact_hash,invoice:{spec:job.spec,hash,charge_id:job.envelope.nullifier,status:verification_mode==='funded-group'?'SIGNED':'ACCEPTED',private:true},envelope:job.envelope,bills:job.dependencies??[],envelopes:job.envelopes??[]};this.store.saveJob(job);return{accepted:true};
  }
  async releasePurchase(session,{purchase_id}){
   const job=this.store.job('sell-'+purchase_id);if(!job?.artifact||job.session_id!==session.id||!job.payload.order.funding_group_id||job.state!=='COMPLETE')throw new Error('PURCHASE_NOT_FOUND');
@@ -228,7 +239,16 @@ export class ServiceAgent{
   if(!['READY','SETTLED'].includes(group.status))throw new Error('PAYMENT_COMMITMENT_REQUIRED');
   const actual=await this.dispatch('visual',session,{release_purchase:{purchase_id:chart.invoice.spec.purchase_id}});
   if(!validateArtifact('chart',actual.artifact)||v4Digest(JSON.stringify(actual.artifact))!==chart.invoice.spec.artifact_hash)throw new Error('DELIVERY_OR_INVOICE_MISMATCH');
-  const result={brief,mode,references:packet,chart:actual.artifact,initial_invoice_id:chart.invoice.spec.id,bills:chart.bills,funding_group_id:group.input.id,round_id:group.round_id,provider_names:['Research Desk','Visual Studio',...(job.plan.needs_audit?['Audit Desk']:[])],planner:job.plan};
+  let bills=chart.bills;
+  if(privacy==='private'){
+   const client=(await this.getIdentity(session.id)).client;
+   bills=await Promise.all(chart.bills.map(async invoice=>{
+    const confirmed=await client.privateInvoice(v4ChargeId(this.config,invoice.spec));
+    if(!confirmed||confirmed.charge.commitment!==invoice.hash||!['READY','SETTLED'].includes(confirmed.status)||confirmed.round_id!==group.round_id)throw new Error('PAYMENT_COMMITMENT_REQUIRED');
+    return{...invoice,status:confirmed.status,round_id:confirmed.round_id,funding_group_id:group.input.id};
+   }));
+  }
+  const result={brief,mode,references:packet,chart:actual.artifact,initial_invoice_id:chart.invoice.spec.id,bills,funding_group_id:group.input.id,round_id:group.round_id,provider_names:['Research Desk','Visual Studio',...(job.plan.needs_audit?['Audit Desk']:[])],planner:job.plan};
   job={...job,state:'COMPLETE',result};if(privacy==='private')job.response=sealResult(this.config,session,request,result,this.ingressSecret);
   this.store.saveJob(job);return privacy==='private'?job.response:result;
  }
@@ -237,7 +257,7 @@ export class ServiceAgent{
   for(const j of this.store.jobs(session.id)){
    const i=j.result?.invoice;if(j.state!=='COMPLETE'||!i?.private||!j.envelope)continue;
    const nullifier=v4ChargeId(this.config,i.spec),registered=await identity.client.privateInvoice(nullifier);
-   entries.set(nullifier,{nullifier,commitment:i.hash,parties:[i.spec.buyer,i.spec.seller],status:registered?.status??'SIGNED',round_id:registered?.round_id??null,funding_group_id:j.payload.order?.funding_group_id??j.order?.funding_group_id??null,envelope:j.envelope,ready_at_ms:i.spec.ready_at_ms});
+   entries.set(nullifier,{nullifier,commitment:i.hash,parties:[i.spec.buyer,i.spec.seller],status:registered?.status??'SIGNED',round_id:registered?.round_id??null,funding_group_id:j.payload.order?.funding_group_id??j.order?.funding_group_id??null,verification_mode:j.private_verification_mode??'receipt',envelope:j.envelope,ready_at_ms:i.spec.ready_at_ms});
   }return{invoices:[...entries.values()]};
  }
  async propose(session,{id,invoice_ids,deadline_ms}){

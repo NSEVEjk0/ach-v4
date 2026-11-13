@@ -2,11 +2,11 @@
 .env*
 !.env.example
 !**/.env.example
-node_modules/
+node_modules
 .next*/
 .vercel/
 .local/
-target/
+target
 contracts/clearing/build/
 scripts/participants.json
 scripts/fund-from-helper.mjs

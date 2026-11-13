@@ -27,7 +27,7 @@ export function AgentAvatar({ participant, name, size = 'normal' }: {
   participant?: Participant; name?: string; size?: 'small' | 'normal' | 'large';
 }) {
   const kind = participant?.kind ?? 'external';
-  return <span className={`agent-avatar agent-${kind} avatar-${size}`} aria-hidden="true">{(participant?.name ?? name ?? 'A').slice(0, 1)}</span>;
+  return <span className={`agent-avatar agent-${kind.startsWith('test-')?'test':kind} avatar-${size}`} aria-hidden="true">{kind.startsWith('test-')?kind.slice(5):(participant?.name ?? name ?? 'A').slice(0, 1)}</span>;
 }
 
 export function EmptyState({ title, children, icon }: { title: string; children: ReactNode; icon?: ReactNode }) {

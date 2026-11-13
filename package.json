@@ -20,7 +20,7 @@
     "build:v4": "node --env-file-if-exists=.env.local scripts/v4/build.mjs",
     "test:contract": "node --env-file-if-exists=.env.local scripts/v4/test-contract.mjs",
     "test:wasm": "node --test --experimental-test-isolation=none tests/v4/wasm.test.mjs",
-    "test:security": "node --test --experimental-test-isolation=none tests/v4/security.test.mjs tests/v4/clearing.test.mjs tests/v4/proxy.test.mjs tests/v4/evaluation-ui.test.mjs tests/v4/browser-state.test.mjs",
+    "test:security": "node --test --experimental-test-isolation=none tests/v4/security.test.mjs tests/v4/clearing.test.mjs tests/v4/proxy.test.mjs tests/v4/evaluation-ui.test.mjs tests/v4/browser-state.test.mjs tests/v4/intents-ui.test.mjs",
     "test:services": "npm test --prefix services",
     "test:live": "node --env-file-if-exists=.env.local scripts/v4/live.mjs",
     "test:e2e": "node --env-file-if-exists=.env.local scripts/v4/browser.mjs"

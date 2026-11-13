@@ -37,6 +37,15 @@ The browser runner starts its own local services. Run it in an environment that 
 
 Individual suites are available as `test:unit`, `test:wasm`, `test:services`, `test:security` and `test:legacy`.
 
+Focused coverage for judge tests, provisioning, private batching and catalogue routes:
+
+```sh
+node --test services/test/netting-test.test.mjs services/test/sponsor.test.mjs services/test/private-commerce.test.mjs services/test/intents.test.mjs
+node --test --experimental-test-isolation=none tests/v4/intents-ui.test.mjs
+```
+
+These offline tests exercise signer checks, restart reconciliation, complete-group private verification, quote validation and token precision. Local contract Wasm and deterministic worker fixtures are not evidence of a live chain transaction, measured gas use or wallet setup speed. Verify live behavior through a fresh testnet workspace and its final receipts before making those claims.
+
 ## Frontend
 
 ```sh
@@ -68,7 +77,27 @@ node scripts/deploy-contract.mjs --private-root .local/my-deployment --services
 
 The service launcher requires Linux with systemd and a `cloudflared` binary in the private deployment directory. It creates an isolated unit and ports for the deployment. Keep its manifest, signer files, environment and journals together across restarts. Reconcile a recorded operation before retrying it.
 
-The test token has no monetary value. Mainnet owner routing is configured separately through the [Intents SDK](../packages/intents/README.md).
+The test token has no monetary value. ACH mainnet deployment and execution are deferred. Browser Intents requests use mainnet dry quotes; the separate [Intents SDK](../packages/intents/README.md) documents owner routing and its current receipt-verifier boundaries.
+
+### Check operating funds
+
+Native test NEAR pays transaction fees, sponsored account storage and OutLayer computation. It is separate from the nonmonetary tUSDC used for agent balances and net settlement. Inspect a deployed testnet namespace without reading keys or sending transfers:
+
+```sh
+node scripts/v4/check-funding.mjs --private-root .local/my-deployment
+```
+
+The JSON report shows available native balances after storage, recommended operating thresholds for the sponsor, coordinator and vault, and the configured sponsorship reservation cap. It includes refill suggestions only when a balance is low. You can use `ACH_V4_PRIVATE_ROOT` instead of the flag; `--manifest PATH` optionally selects another manifest within your chosen deployment setup.
+
+### Private funded-group batching
+
+Set `private.batch_funded_invoices = true` in the private deployment configuration to stage the commerce workflow's three signed encrypted invoices for one OutLayer verification/netting run. This is opt-in. Persist the agent, coordinator and private-job stores together: the selected verification mode stays attached to each invoice so an in-progress receipt workflow continues its original path after restart. The browser only releases encrypted results after the complete funded group is READY or SETTLED on chain.
+
+### Test larger groups from the UI
+
+Open Clearing → **Test netting with more agents**, choose 3–12 agents and public or private bills, prepare a fresh judge workspace if prompted, then run the signed test. Inspect its round and balances after settlement. Public tests always leave a 0.020 tUSDC net payment. Private tests use at most six bills; at twelve agents the six pairs have no offsetting payments and settle 0.500 tUSDC.
+
+Fresh judge workspaces receive real sponsored testnet accounts with separate trading keys. Research and each extra test wallet receive 1 tUSDC; Visual and Audit initially receive zero. Workspace limits include twelve synthetic netting tests, 48 quote previews, a 24-hour session expiry and the configured spending and sponsor budgets. Settings can reopen earlier unexpired workspaces or create a new one.
 
 ## SDK packages
 

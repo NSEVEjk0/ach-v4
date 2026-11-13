@@ -89,7 +89,7 @@ test('workspace listing and changes require a valid session before any backend r
 
 test('fresh workspaces retain trusted sponsorship identity and replace only the HTTP-only session cookie',async()=>{
  const child={id:'c'.repeat(32)};await isolated(async(url,options)=>{
-  assert.equal(new URL(url).pathname,'/session-new');assert.equal(options.headers.Authorization,'Bearer '+sessionToken);assert.deepEqual(Object.keys(JSON.parse(options.body)),['ip_hash']);assert.notEqual(JSON.parse(options.body).ip_hash,'spoofed');
+  assert.equal(new URL(url).pathname,'/session-new');assert.equal(options.headers.Authorization,'Bearer '+sessionToken);assert.deepEqual(Object.keys(JSON.parse(options.body)),['ip_hash','agent_count']);assert.equal(JSON.parse(options.body).agent_count,3);assert.notEqual(JSON.parse(options.body).ip_hash,'spoofed');
   return new Response(JSON.stringify({session:child,token:'d'.repeat(64)}));
  },async()=>{
   const reply=await request('session-new',{body:{ip_hash:'spoofed'},headers:{cookie:'ach-v4-session='+sessionToken}});assert.equal(reply.status,200);assert.deepEqual(await reply.json(),{ok:true,session:child});const cookie=reply.headers.get('set-cookie');assert.ok(cookie.includes('HttpOnly'));assert.ok(cookie.includes('Secure'));assert.ok(!cookie.includes(serviceSecret));

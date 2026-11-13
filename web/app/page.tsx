@@ -20,7 +20,7 @@ export default function Home() {
           <h1>The agent economy<br />needs a<br /><em>clearing house.</em></h1>
           <p className="hero-description">Give your agents wallets, set their budgets, and let their agreed payments clear together. Money owed offsets money earned, freeing capital for the next trade.</p>
           <div className="hero-actions"><StartSession /><a className="text-link" href="#netting">Understand netting <Arrow /></a></div>
-          <p className="free-note">Free to try · Three working agents · Sponsored test funds</p>
+          <p className="free-note">Free to try · Three service agents · Netting tests with up to 12 agents</p>
           <div className="hero-promises"><span><Check size={14} /> Agreed prices</span><span><Check size={14} /> Individual consent</span><span><Check size={14} /> Funded settlement</span></div>
         </div>
         <div className="hero-example"><ExampleSheet /><p className="example-disclosure">Explore an illustrative payment network. The demo uses test money.</p></div>
@@ -74,7 +74,7 @@ export default function Home() {
         <div className="capability-list">
           <article><Wallet size={25} /><h3>Wallets with spending limits</h3><p>Give each agent a funded balance and clear permissions. Owners manage budgets and withdraw available money; agents trade within their authority.</p><Link href="/workspace?view=wallets">Open wallets <Arrow /></Link></article>
           <article><LockKeyhole size={25} /><h3>Private invoice processing</h3><p>Encrypted contributions are verified through OutLayer. Invoice contents stay private while the participants and their approved net payments remain visible.</p><Link href="/developers#privacy">How privacy works <Arrow /></Link></article>
-          <article><ArrowUpRight size={25} /><h3>Cross-chain USDC routes</h3><p>Preview Base ↔ NEAR routes through NEAR Intents. The owner SDK connects funding and payouts to separate transfers with their own receipts.</p><Link href="/workspace?view=wallets">Preview a route <Arrow /></Link></article>
+          <article><ArrowUpRight size={25} /><h3>Cross-chain quote previews</h3><p>Choose a chain and token from the live NEAR Intents catalogue. Preview funding into NEAR USDC or a payout from it, with the amount, destination and expiry ready to review.</p><Link href="/workspace?view=wallets">Preview a route <Arrow /></Link></article>
         </div>
       </section>
 
@@ -88,8 +88,9 @@ export default function Home() {
             ['Does every agent in the network need to approve?', 'The agents included in a clearing round approve that round. A smaller consenting group can choose its own bills, calculate a new result and provide fresh approvals. Bills left out of the group remain outstanding.'],
             ['What happens when agents commit a clearing group?', 'Each participant authorizes exactly what it will pay or receive. The required money is reserved for that group. Once its payment commitment is complete, all included bills settle together and the agents can use their resulting balances.'],
             ['Does netting change the price of the work?', 'Each accepted price stays fixed. Netting preserves every participant’s exact gain or loss while reducing the payments needed when debts offset. A one-way purchase clears for its full amount.'],
-            ['Who controls an agent’s wallet?', 'Owners control funding, withdrawals and permissions. Delegated agent keys purchase and approve within their limits. The free demo supplies hosted test identities; the SDK supports independently operated owner and agent signers.'],
-            ['What can I try for free?', 'Start a sponsored NEAR testnet session, run a brief through three service agents, download the work, inspect their bills and clear a round. You can also withdraw and redeposit test tokens. Test funds have no monetary value.'],
+            ['Who controls an agent’s wallet?', 'Owners control funding, withdrawals and permissions. Delegated agent keys purchase and approve within their limits. The free demo supplies operator-managed test identities; independently operated SDK agents keep their own owner and trading keys.'],
+            ['What can I try for free?', 'Start a sponsored NEAR testnet session, run a brief through three service agents and inspect the work and payment round. In Clearing, test public or encrypted bills with 3–12 signing agents. You can also withdraw and redeposit test tokens. Test funds have no monetary value.'],
+            ['Which chains can I use?', 'The route picker reads the live Intents catalogue for funding and payout previews. Each route connects your chosen asset with USDC on NEAR; availability depends on the provider. These are mainnet dry quotes and the browser sends no cross-chain transfer. ACH mainnet execution is deferred. The separate owner SDK currently verifies destination receipts on NEAR and Base.'],
           ].map(([question, answer]) => <details key={question}><summary>{question}<ChevronDown size={17} /></summary><p>{answer}</p></details>)}
         </div>
       </section>

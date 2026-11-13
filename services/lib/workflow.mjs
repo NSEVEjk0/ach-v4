@@ -31,8 +31,14 @@ export function requireIdentityAccount(config,role,identity){
 }
 export function sessionAccountId(config,sessionId,kind){
  requireFreshAccounts(config);
- if(typeof sessionId!=='string'||!/^[a-f\d]{32}$/.test(sessionId)||!['research','visual','audit'].includes(kind))throw new Error('SESSION_IDENTITY_SCOPE_REQUIRED');
- return`${kind[0]}-${sessionId.slice(0,12)}.${config.root}`;
+ if(typeof sessionId!=='string'||!/^[a-f\d]{32}$/.test(sessionId)||!isSessionAgentKind(kind))throw new Error('SESSION_IDENTITY_SCOPE_REQUIRED');
+ const prefix=kind.startsWith('test-')?'t'+kind.slice(5):kind[0];
+ return`${prefix}-${sessionId.slice(0,12)}.${config.root}`;
+}
+export const isSessionAgentKind=kind=>['research','visual','audit'].includes(kind)||typeof kind==='string'&&/^test-(?:[4-9]|1[0-2])$/.test(kind);
+export function sessionAgentKinds(count=3){
+ if(!Number.isInteger(count)||count<3||count>12)throw new Error('TEST_AGENT_COUNT_LIMIT');
+ return['research','visual','audit',...Array.from({length:count-3},(_,index)=>'test-'+(index+4))];
 }
 
 // Include initial contract state and transaction gas above the code footprint.

@@ -7,6 +7,8 @@ export interface IntentsToken {
     blockchain: string;
     symbol: string;
     contractAddress?: string;
+    price?: number;
+    priceUpdatedAt?: string;
 }
 export interface QuoteRequest {
     dry: boolean;
@@ -74,6 +76,8 @@ export interface Route {
     destination_chain?: string;
     destination_contract?: string;
 }
+/** Catalogue identifiers cover NEP-141, NEP-245 and Chain Signatures assets. */
+export declare function isIntentsAssetId(value: unknown): value is string;
 export declare function validateQuoteRequest(r: QuoteRequest, now?: number): void;
 export declare function assertQuoteMatches(request: QuoteRequest, response: QuoteResponse): void;
 export declare function routeState(status: string): RouteState;

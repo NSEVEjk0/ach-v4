@@ -17,19 +17,20 @@ async function privateWorker(input){
  try{const done=new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',(code,signal)=>code===0?resolve(stdout.trim()):reject(new Error('PRIVATE_FIXTURE_WORKER_FAILED:'+String(signal??code)+':'+stderr)));});child.stdin.end(input);return await done;}
  finally{clearTimeout(timer);}
 }
-export async function setup({privateMode=false}={}){
- const config={...defaultConfig,...(privateMode?{private:{enabled:true,hash:'c'.repeat(64),profile:'private-v4'}}:{})};
+export async function setup({privateMode=false,batchPrivate=false,agentCount=3}={}){
+ const config={...defaultConfig,...(privateMode?{private:{enabled:true,hash:'c'.repeat(64),profile:'private-v4',batch_funded_invoices:batchPrivate}}:{})};
  const temp=mkdtempSync(path.join(tmpdir(),'ach-v4-test-'));const chain=new WasmChain({now:Date.now()}),workerRuns=[];await chain.deploy(config.vault,artifacts.vault);await chain.deploy(config.token,artifacts.token);
  const coordinatorId='desk.commerce.testnet';await chain.invoke(config.vault,'init',{network:'testnet',token:config.token,owner_id:coordinatorId,coordinator_id:coordinatorId,private_worker:null});await chain.invoke(config.token,'init',{owner_id:coordinatorId});await chain.invoke(config.token,'storage_deposit',{account_id:config.vault});
- const identities=new Map(),owners=new Map();const session={id:'1234567890abcdef1234567890abcdef',created_at_ms:chain.now,expires_at_ms:chain.now+86_400_000,participants:[],round_ids:[]};
- for(const kind of ['research','visual','audit','coordinator']){const accountId=kind==='coordinator'?coordinatorId:`${kind}.commerce.testnet`;const {publicKey,privateKey}=generateKeyPairSync('ed25519');const key=publicKey.export({type:'spki',format:'der'}).subarray(-32).toString('hex'),ownerKey='f'.repeat(64);
+ const identities=new Map(),owners=new Map();const session={id:'1234567890abcdef1234567890abcdef',created_at_ms:chain.now,expires_at_ms:chain.now+86_400_000,participants:[],round_ids:[],state:'READY',judge_testing:true,agent_count:agentCount,initial_balance:(1_000_000n*BigInt(agentCount-2)).toString()};
+ for(const kind of ['research','visual','audit',...Array.from({length:agentCount-3},(_,index)=>'test-'+(index+4)),'coordinator']){const accountId=kind==='coordinator'?coordinatorId:`${kind}.commerce.testnet`;const {publicKey,privateKey}=generateKeyPairSync('ed25519');const key=publicKey.export({type:'spki',format:'der'}).subarray(-32).toString('hex'),ownerKey='f'.repeat(64);
   chain.addKey(accountId,key,{methods,receiver:config.vault});chain.addKey(accountId,ownerKey,{owner:true});const owner=new AchV4Client(config,chain.transport(accountId,ownerKey,{owner:true}),'owner');
   await chain.invoke(config.vault,'authorize_account_registration',{account_id:accountId,name:kind,expires_at_ms:session.expires_at_ms},{account:coordinatorId,deposit:1n});
   await owner.register(kind);await owner.setPolicy({key,max_invoice:'100000',gross_budget:'1000000',max_net_commitment:'1000000',expires_at_ms:chain.now+86_400_000,counterparties:[],services:[]},`policy:${kind}`);await chain.invoke(config.token,'storage_deposit',{account_id:accountId});owners.set(kind,owner);
-  identities.set(kind,{account_id:accountId,key:{sign:hash=>({signature:sign(null,hash,privateKey)})},client:new AchV4Client(config,chain.transport(accountId,key))});
+  identities.set(kind,{account_id:accountId,key:{getPublicKey:()=>({data:Buffer.from(key,'hex')}),sign:hash=>({signature:sign(null,hash,privateKey)})},client:new AchV4Client(config,chain.transport(accountId,key))});
   if(kind!=='coordinator')session.participants.push({kind,name:kind,account_id:accountId,public_key:key});
  }
  await chain.invoke(config.token,'mint',{account_id:identities.get('research').account_id,amount:'1000000'},{account:coordinatorId,deposit:1n});await owners.get('research').deposit('initial','1000000');
+ for(const participant of session.participants.filter(p=>p.kind.startsWith('test-'))){await chain.invoke(config.token,'mint',{account_id:participant.account_id,amount:'1000000'},{account:coordinatorId,deposit:1n});await owners.get(participant.kind).deposit('initial-'+participant.kind,'1000000');}
  if(privateMode){
   chain.externals.set('outlayer.testnet',async(method,args,{predecessor})=>{
    assert.equal(method,'request_execution');assert.equal(predecessor,config.vault);assert.equal(args.source.WasmUrl.hash,config.private.hash);
@@ -46,16 +47,17 @@ export async function setup({privateMode=false}={}){
   if(identityGroups.has(next.id))return store.session(next.id);
   chain.now=Math.max(chain.now,Date.now());
   const nextIdentities=new Map(),nextOwners=new Map();
-  for(const kind of ['research','visual','audit']){
-   const accountId=`${kind[0]}-${next.id.slice(0,12)}.commerce.testnet`,{publicKey,privateKey}=generateKeyPairSync('ed25519'),key=publicKey.export({type:'spki',format:'der'}).subarray(-32).toString('hex'),ownerKey='f'.repeat(64);
+  for(const kind of ['research','visual','audit',...Array.from({length:(next.agent_count??3)-3},(_,index)=>'test-'+(index+4))]){
+   const accountId=`${kind.startsWith('test-')?'t'+kind.slice(5):kind[0]}-${next.id.slice(0,12)}.commerce.testnet`,{publicKey,privateKey}=generateKeyPairSync('ed25519'),key=publicKey.export({type:'spki',format:'der'}).subarray(-32).toString('hex'),ownerKey='f'.repeat(64);
    chain.addKey(accountId,key,{methods,receiver:config.vault});chain.addKey(accountId,ownerKey,{owner:true});
    const owner=new AchV4Client(config,chain.transport(accountId,ownerKey,{owner:true}),'owner');
    await chain.invoke(config.vault,'authorize_account_registration',{account_id:accountId,name:kind,expires_at_ms:next.expires_at_ms},{account:coordinatorId,deposit:1n});
    await owner.register(kind);await owner.setPolicy({key,max_invoice:'100000',gross_budget:'1000000',max_net_commitment:'1000000',expires_at_ms:next.expires_at_ms,counterparties:[],services:[]},`policy:${next.id}:${kind}`);await chain.invoke(config.token,'storage_deposit',{account_id:accountId});
-   nextOwners.set(kind,owner);nextIdentities.set(kind,{account_id:accountId,key:{sign:hash=>({signature:sign(null,hash,privateKey)})},client:new AchV4Client(config,chain.transport(accountId,key))});next.participants.push({kind,name:kind,account_id:accountId,public_key:key});
+   nextOwners.set(kind,owner);nextIdentities.set(kind,{account_id:accountId,key:{getPublicKey:()=>({data:Buffer.from(key,'hex')}),sign:hash=>({signature:sign(null,hash,privateKey)})},client:new AchV4Client(config,chain.transport(accountId,key))});next.participants.push({kind,name:kind,account_id:accountId,public_key:key});
   }
   identityGroups.set(next.id,nextIdentities);ownerGroups.set(next.id,nextOwners);
   const research=nextIdentities.get('research').account_id;await chain.invoke(config.token,'mint',{account_id:research,amount:'1000000'},{account:coordinatorId,deposit:1n});await nextOwners.get('research').deposit(next.id,'1000000');
+  for(const p of next.participants.filter(p=>p.kind.startsWith('test-'))){await chain.invoke(config.token,'mint',{account_id:p.account_id,amount:'1000000'},{account:coordinatorId,deposit:1n});await nextOwners.get(p.kind).deposit(next.id+'-'+p.kind,'1000000');}
   next.state='READY';store.updateSession(next);store.event(next.id,'session-ready',next.id,{testnet:false,local_wasm:true});return next;
  }
  for(const kind of ['research','visual','audit'])actors.set(kind,makeActor(kind));
@@ -63,7 +65,7 @@ export async function setup({privateMode=false}={}){
  agents.privateSummary=(kind,s)=>actors.get(kind).privateSummary(s);
  agents.disclosePrivate=(kind,s,r)=>actors.get(kind).disclosePrivate(s,r);
  coordinator=new Coordinator({store,config,getClient:async()=>identities.get('coordinator').client,getPrivateClient:async()=>owners.get('coordinator'),agents,sponsor:{},clock:()=>chain.now});
- return{temp,config,chain,session,token,store,actors,actorStores,identities,owners,ownerGroups,addWorkspace,coordinator,workerRuns,
+ return{temp,config,chain,session,token,store,actors,actorStores,identities,owners,identityGroups,ownerGroups,addWorkspace,coordinator,workerRuns,
   restart:()=>{for(const s of actorStores.values())s.close();for(const kind of ['research','visual','audit'])actors.set(kind,makeActor(kind));coordinator=new Coordinator({store,config,getClient:async()=>identities.get('coordinator').client,getPrivateClient:async()=>owners.get('coordinator'),agents,sponsor:{},clock:()=>chain.now});return coordinator;},
   cleanup:()=>{store.close();for(const s of actorStores.values())s.close();rmSync(temp,{recursive:true,force:true});}};
 }

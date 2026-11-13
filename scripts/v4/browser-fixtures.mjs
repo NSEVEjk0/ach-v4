@@ -43,6 +43,12 @@ export async function uiFixtures({ browser, base, config, check, layout }) {
   page.on('pageerror', error => runtimeErrors.push(error.message));
   let state = snapshot(config);
   const clearRequests = [], quoteRequests = [];
+  const catalogue = [
+    {assetId:'nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1',blockchain:'near',symbol:'USDC',decimals:6},
+    {assetId:'nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near',blockchain:'base',symbol:'USDC',decimals:6},
+    {assetId:'nep141:eth.omft.near',blockchain:'eth',symbol:'ETH',decimals:18,price:2000},
+    {assetId:'nep141:sol.omft.near',blockchain:'sol',symbol:'SOL',decimals:9,price:150}
+  ];
   const refresh = async () => { await page.getByRole('button', { name: 'Refresh confirmed state' }).click(); await page.waitForTimeout(250); };
   try {
     await page.route('**/api/v4/snapshot', route => route.fulfill({ json: state }));
@@ -50,12 +56,13 @@ export async function uiFixtures({ browser, base, config, check, layout }) {
       clearRequests.push(route.request().postDataJSON());
       return route.fulfill({ json: { state: 'WAITING', round: state.rounds[0] } });
     });
+    await page.route('**/api/v4/intents/tokens', route=>route.fulfill({json:catalogue}));
     await page.route('**/api/v4/intents/quote', route => {
       const request = route.request().postDataJSON(); quoteRequests.push(request);
       return route.fulfill({ json: {
         id: request.request_id, direction: request.direction, network: 'mainnet', state: 'QUOTED', dry: true,
         request: { recipient: request.recipient, refundTo: request.refund_to, amount: request.amount, deadline: new Date(Date.now() + 300000).toISOString() },
-        source: { blockchain: 'base', symbol: 'USDC' }, destination: { blockchain: 'near', symbol: 'USDC' },
+        source: request.direction==='funding'?catalogue.find(t=>t.assetId===request.asset_id):catalogue[0], destination: request.direction==='funding'?catalogue[0]:catalogue.find(t=>t.assetId===request.asset_id),
         response: { quote: { amountOut: '9990000', minAmountOut: '9890000', timeEstimate: 20, deadline: new Date(Date.now() + (quoteRequests.length === 1 ? 1000 : 300000)).toISOString() } },
       } });
     });
@@ -158,14 +165,29 @@ export async function uiFixtures({ browser, base, config, check, layout }) {
     await navigateWorkspace(page, 'Wallets');
     await page.getByRole('button', { name: 'Preview a route', exact: true }).click();
     await page.getByLabel('Receiving NEAR account').fill('owner.near');
-    await page.getByLabel('Refund Base address').fill('0x' + '1'.repeat(40));
+    await page.getByLabel('Refund Base account').fill('0x' + '1'.repeat(40));
     await page.getByRole('button', { name: 'Get a mainnet quote', exact: true }).click();
     await page.getByText('Quote expired', { exact: true }).waitFor({ timeout: 10000 });
     await page.getByRole('button', { name: 'Get a mainnet quote', exact: true }).click();
     await page.getByText('No transfer sent', { exact: true }).waitFor();
     assert.equal(quoteRequests.length, 2); assert.notEqual(quoteRequests[0].request_id, quoteRequests[1].request_id);
-    assert.match(await page.locator('.route-review').innerText(), /9\.890000 USDC/);
+    assert.match(await page.locator('.route-review').innerText(), /9\.89 USDC/);
     check('ui-fixture-quote-expiry-and-refresh', { provider_deadline_precedes_request: true });
+    await page.locator('.route-form').getByRole('combobox',{name:/^Chain/}).selectOption('eth');
+    await page.getByLabel('Amount in ETH').fill('0.123456789012345678');
+    await page.getByLabel('Refund Ethereum account').fill('0x'+'1'.repeat(40));
+    await page.getByRole('button',{name:'Get a mainnet quote',exact:true}).click();
+    await page.getByText('No transfer sent',{exact:true}).waitFor();
+    assert.equal(quoteRequests.at(-1).amount,'123456789012345678');
+    assert.equal(quoteRequests.at(-1).asset_id,catalogue[2].assetId);
+    assert.match(await page.locator('.route-review h3').innerText(),/0\.123456789012345678 ETH/);
+    await page.locator('.route-form').getByRole('combobox',{name:/^Direction/}).selectOption('payout');
+    await page.getByLabel('Receiving Ethereum account').fill('0x'+'2'.repeat(40));
+    await page.getByLabel('Refund NEAR account').fill('owner.near');
+    await page.getByRole('button',{name:'Get a mainnet quote',exact:true}).click();
+    await page.getByText('No transfer sent',{exact:true}).waitFor();
+    assert.equal(quoteRequests.at(-1).direction,'payout');assert.equal(quoteRequests.at(-1).amount,'10000000');
+    check('ui-live-catalogue-picker-preserves-eighteen-decimal-input-and-payout-direction');
     await layout(page, 'fixture-quote-review', 390, 844);
 
     const privateIds = ['1', '2', '3'].map(digit => digit.repeat(64));

@@ -3,12 +3,16 @@ import { routeJson } from './http.js';
 export const INTENTS_STATUS = ["KNOWN_DEPOSIT_TX", "PENDING_DEPOSIT", "INCOMPLETE_DEPOSIT", "PROCESSING", "SUCCESS", "REFUNDED", "FAILED"];
 const units = (s) => { if (!/^(0|[1-9]\d*)$/.test(s) || s.length > 78)
     throw new Error("INVALID_ROUTE_AMOUNT"); return BigInt(s); };
+/** Catalogue identifiers cover NEP-141, NEP-245 and Chain Signatures assets. */
+export function isIntentsAssetId(value) {
+    return typeof value === 'string' && /^(?:nep141|nep245|1cs_v1):[^\s\u0000-\u001f\u007f]{1,244}$/.test(value);
+}
 export function validateQuoteRequest(r, now = Date.now()) {
     if (typeof r.dry !== "boolean" || !["SIMPLE", "MEMO"].includes(r.depositMode))
         throw new Error("UNSUPPORTED_ROUTE_MODE");
-    if (!r.originAsset.startsWith("nep141:") || !r.destinationAsset.startsWith("nep141:") || r.originAsset === r.destinationAsset)
+    if (!isIntentsAssetId(r.originAsset) || !isIntentsAssetId(r.destinationAsset) || r.originAsset === r.destinationAsset)
         throw new Error("INVALID_ROUTE_ASSET");
-    if (!units(r.amount) || !r.recipient || !r.refundTo || r.recipient.length > 128 || r.refundTo.length > 128)
+    if (!units(r.amount) || ![r.recipient, r.refundTo].every(value => typeof value === 'string' && value.length >= 2 && value.length <= 512 && !/[\s\u0000-\u001f\u007f]/.test(value)))
         throw new Error("INVALID_ROUTE_IDENTITY");
     if (r.depositType !== "ORIGIN_CHAIN" || r.refundType !== "ORIGIN_CHAIN" || r.recipientType !== "DESTINATION_CHAIN" || r.swapType !== "EXACT_INPUT")
         throw new Error("UNSUPPORTED_ROUTE_MODE");

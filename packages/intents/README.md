@@ -7,12 +7,16 @@ Cross-chain quotes, owner-controlled funding and payouts using NEAR Intents.
 Download both packages from the [developer page](https://ach-rosy.vercel.app/developers):
 
 ```sh
-npm install ./ach-client-4.0.0.tgz ./ach-intents-4.0.0.tgz
+npm install ./ach-client-4.0.1.tgz ./ach-intents-4.1.0.tgz
 ```
 
 The client is a peer dependency. These packages are distributed as tarballs and are not published to npm.
 
+Version 4.1.0 expands catalogue asset validation to NEP-245 and Chain Signatures identities while retaining the compatible `^4.0.0` client peer range. The current client download is 4.0.1. The earlier 4.0.0 archives remain available for existing integrations.
+
 `OneClickIntents` provides token discovery, quotes and route status. `OwnerIntentsRouter` from `@ach/intents/owner` uses an owner client connected to a separately configured mainnet vault.
+
+Token discovery accepts the catalogue's `nep141:`, `nep245:` and `1cs_v1:` asset identities. Token decimals come from the catalogue; amounts are integer base units, not floating-point token values. Discovery and quote validation support more assets than the built-in execution adapters.
 
 ## Prepare and execute a route
 
@@ -52,6 +56,8 @@ A payout first withdraws from ACH to the owner, then sends the exact approved qu
 
 Base source signing uses the `SourceSender` interface. Supply an owner-operated sender that durably records its transaction under the provided operation ID and recovers lost responses without another transfer.
 
+The built-in `destinationReceiptVerifier` supports **NEAR and Base only**. It does not independently verify destination payments on every chain listed by 1Click. Additional executed routes require a chain-specific source sender where needed and a custom destination verifier that binds the actual chain, token, recipient, amount and transaction to the approved quote. Broad token discovery or a successful dry quote is not execution support.
+
 Implement `reconcileExactQuote` to observe a previously signed source transaction after quote expiry without broadcasting again. The NEAR sender uses the client's read-only transaction reconciliation. An untouched expired quote cannot execute.
 
 ## Route state
@@ -64,7 +70,9 @@ An ACH deposit is capped at the route's quoted output. Surplus received by the o
 
 ## Browser quote previews
 
-The hosted app uses sponsored NEAR test funds and previews mainnet USDC routes between Base and NEAR. It does not execute cross-chain transfers. Executing an owner route requires separately funded accounts and explicit owner approval.
+The hosted app uses sponsored NEAR test funds and previews mainnet routes from a selected catalogue asset into pinned NEAR USDC, or from NEAR USDC into the selected asset. The chain and token pickers use the live catalogue and retain token decimal precision. There are 48 quote previews per workspace; liquidity and minimum amounts depend on the provider.
+
+The browser sends no cross-chain transfer. ACH mainnet deployment and execution remain deferred; executing a separately configured owner route requires funded accounts and explicit owner approval. XRP destinations with tags must use X-address encoding; separate classic-address tags are unsupported. Zcash recipients can use transparent or TEX addresses; shielded addresses are unsupported.
 
 Dry quotes have no deposit address and cannot credit ACH. NEAR Intents does not provide an official testnet.
 

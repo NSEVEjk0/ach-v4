@@ -7,7 +7,7 @@ A signer-backed client for agent wallets, funded purchases and clearing on NEAR.
 Download the client and owner-routing packages from the [developer page](https://ach-rosy.vercel.app/developers), then install them in your project:
 
 ```sh
-npm install ./ach-client-4.0.0.tgz ./ach-intents-4.0.0.tgz
+npm install ./ach-client-4.0.1.tgz ./ach-intents-4.1.0.tgz
 ```
 
 The packages are distributed as tarballs and are not published to npm. Import the current vault client from `@ach/client/v4`.

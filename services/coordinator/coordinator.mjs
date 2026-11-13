@@ -4,9 +4,35 @@ import {serviceErrorCode}from '../lib/http.mjs';
 const jobError=error=>serviceErrorCode(error,'SERVICE_OR_CHAIN_UNAVAILABLE');
 const retryable=code=>/UNAVAILABLE|UNKNOWN|SYNCHRONIZATION|PRIVATE_PROCESSING/.test(code);
 const confirmationPending=code=>['PRIVATE_PROCESSING','RPC_UNAVAILABLE','TRANSACTION_BROADCAST_UNKNOWN','SERVICE_CONFIRMATION_UNKNOWN','ROUND_SYNCHRONIZATION_UNAVAILABLE'].includes(code);
+const terminalRound=status=>['SETTLED','EXPIRED','STALE','CANCELLED'].includes(status);
+const pendingAudit=data=>{
+ const terminalRounds=new Set((data.rounds??[]).filter(r=>terminalRound(r.status)).map(r=>r.input.id));
+ const terminalGroups=new Set((data.funding_groups??[]).filter(g=>['SETTLED','EXPIRED'].includes(g.status)).map(g=>g.input.id));
+ const invoicePending=i=>!terminalRounds.has(i.round_id)&&!terminalGroups.has(i.funding_group_id)&&(['ACCEPTED','READY'].includes(i.status)||i.status==='SIGNED'&&i.verification_mode!=='funded-group');
+ return(data.balances??[]).some(b=>BigInt(b.reserved??'0')>0n)||(data.recovery_withdrawals??[]).some(w=>w?.status==='PENDING')||(data.rounds??[]).some(r=>!terminalRound(r.status))||(data.funding_groups??[]).some(g=>['COLLECTING','FUNDED'].includes(g.status)||g.status==='READY'&&!terminalRounds.has(g.round_id))||(data.invoices??[]).some(invoicePending)||(data.private_invoices??[]).some(invoicePending);
+};
 export class Coordinator{
- constructor({store,config,getClient,getPrivateClient,agents,sponsor,clock=Date.now,snapshotTtlMs=0,jobTimeoutMs=900000}){Object.assign(this,{store,config,getClient,getPrivateClient,agents,sponsor,clock,snapshotTtlMs,jobTimeoutMs});this.running=new Map();this.lastSync=null;this.snapshots=new Map();this.snapshotTasks=new Map();}
- invalidateSnapshot(id){this.snapshots.delete(id);this.snapshotTasks.delete(id);}
+ constructor({store,config,getClient,getPrivateClient,agents,sponsor,clock=Date.now,snapshotTtlMs=0,jobTimeoutMs=900000,idleAuditIntervalMs=60000,idleAuditsPerTick=1}){
+  if(!Number.isSafeInteger(idleAuditIntervalMs)||idleAuditIntervalMs<0||!Number.isSafeInteger(idleAuditsPerTick)||idleAuditsPerTick<1)throw new Error('INVALID_AUDIT_SCHEDULE');
+  Object.assign(this,{store,config,getClient,getPrivateClient,agents,sponsor,clock,snapshotTtlMs,jobTimeoutMs,idleAuditIntervalMs,idleAuditsPerTick});this.running=new Map();this.lastSync=null;this.snapshots=new Map();this.snapshotTasks=new Map();this.auditSchedule=new Map();this.auditInvalidations=new Map();this.auditVersion=0;
+ }
+ invalidateSnapshot(id){this.snapshots.delete(id);this.snapshotTasks.delete(id);this.auditInvalidations.set(id,++this.auditVersion);}
+ async scheduledAuditSessions(){
+  const sessions=this.store.pendingSessions().filter(s=>(!s.state||s.state==='READY')&&(s.expires_at_ms===undefined||s.expires_at_ms>this.clock())),ids=new Set(sessions.map(s=>s.id)),active=[],idle=[];
+  for(const map of [this.auditSchedule,this.auditInvalidations])for(const id of map.keys())if(!ids.has(id))map.delete(id);
+  for(const session of sessions){
+   const previous=this.auditSchedule.get(session.id),jobs=this.store.jobs(session.id);
+   const unfinished=jobs.some(j=>/^(?:run-|clear-|test-netting-|funding-net-|receipt-)/.test(j.id)&&(['STARTED','WAITING'].includes(j.state)||!previous&&j.id.startsWith('run-')&&j.state==='FAILED'&&retryable(j.error??'')));
+   const rounds=await Promise.all(this.recoverRoundIndex(session).map(id=>this.store.get('terminal-round:'+id)));
+   const owners=this.store.ownerOperations?.((session.participants??[]).map(p=>p.account_id))??[];
+   if(unfinished||rounds.some(r=>!r)||owners.some(o=>['SIGNED','UNKNOWN'].includes(o.state))||previous?.pending||this.auditInvalidations.has(session.id))active.push(session);
+   else if(!previous||this.clock()-previous.at>=this.idleAuditIntervalMs)idle.push(session);
+  }
+  // Unknown and idle workspaces rotate by their last attempt, including failed
+  // reads. Known unfinished work runs first and does not consume the idle cap.
+  idle.sort((a,b)=>(this.auditSchedule.get(a.id)?.at??-Infinity)-(this.auditSchedule.get(b.id)?.at??-Infinity)||a.created_at_ms-b.created_at_ms||a.id.localeCompare(b.id));
+  return[...active,...idle.slice(0,this.idleAuditsPerTick)];
+ }
  async readRound(client,id){
   const cached=await this.store.get('terminal-round:'+id);if(cached)return cached.round;
   const round=await client.round(id);
@@ -15,14 +41,14 @@ export class Coordinator{
  }
  recoverRoundIndex(session){
   const latest=this.store.session(session.id)??session;
-  const recorded=this.store.jobs(session.id).filter(j=>['clear-','funding-net-','run-'].some(prefix=>j.id.startsWith(prefix))&&typeof(j.round_id??j.result?.round_id)==='string').map(j=>j.round_id??j.result.round_id);
+  const recorded=this.store.jobs(session.id).filter(j=>['clear-','funding-net-','run-','test-netting-'].some(prefix=>j.id.startsWith(prefix))&&typeof(j.round_id??j.result?.round_id)==='string').map(j=>j.round_id??j.result.round_id);
   const ids=[...new Set([...(latest.round_ids??[]),...(session.round_ids??[]),...recorded])];
   // The durable proposal intent precedes broadcast. A lost response must not
   // hide the round, including a READY or SETTLED round from an older runtime.
   if(JSON.stringify(ids)!==JSON.stringify(latest.round_ids??[])){latest.round_ids=ids;this.store.updateSession(latest);}
   session.round_ids=ids;return ids;
  }
- async start(ipHash){return this.sponsor.createSession(ipHash);}
+ async start(ipHash,agent_count=3){return this.sponsor.createSession(ipHash,agent_count);}
  authenticate(token){return this.store.authenticate(token,this.clock());}
  setClearingPolicy(session,{mode}){
   if(!['manual','automatic'].includes(mode))throw new Error('INVALID_CLEARING_POLICY');
@@ -71,8 +97,7 @@ export class Coordinator{
   const selected=request.selected_accounts;
   if(!Array.isArray(selected)||selected.length<2||selected.length>12||new Set(selected).size!==selected.length||selected.some(id=>!session.participants.some(p=>p.account_id===id)))throw new Error('SELECT_ROUND_PARTICIPANTS');
   const id='clear-'+request.request_id;
-  if(this.store.jobs(session.id).filter(j=>j.id.startsWith('clear-')).length>=12&&!this.store.job(id))throw new Error('SESSION_CLEARING_QUOTA_REACHED');
-  const old=this.store.job(id),job=this.store.startJob(id,session.id,{...request,privacy:request.privacy==='private'?'encrypted':'public'});
+  const old=this.store.job(id),job=this.store.startSessionJob(id,session.id,{...request,privacy:request.privacy==='private'?'encrypted':'public'},{kind:'clear'});
   if(!old){job.automatic=automatic;this.store.saveJob(job);}
   if(!automatic)this.setClearingPolicy(session,{mode:'manual'});
   return job;
@@ -94,8 +119,9 @@ export class Coordinator{
  }
  async privateInvoices(session){
   if(!this.config.private?.enabled||!this.agents.privateSummary)return[];
-  if(!this.store.jobs(session.id).some(j=>j.id.startsWith('run-')&&j.payload.privacy==='encrypted'))return[];
-  const responses=await Promise.all(session.participants.map(p=>this.agents.privateSummary(p.kind,session))),seen=new Map();
+  const privateRuns=this.store.jobs(session.id).filter(j=>j.payload.privacy==='encrypted'),normal=privateRuns.some(j=>j.id.startsWith('run-')),test=privateRuns.some(j=>j.id.startsWith('test-netting-'));
+  if(!normal&&!test)return[];
+  const responses=await Promise.all([...(normal?session.participants.filter(p=>['research','visual','audit'].includes(p.kind)).map(p=>this.agents.privateSummary(p.kind,session)):[]),...(test&&this.tester?[this.tester.privateSummary(session)]:[])]),seen=new Map();
   for(const response of responses)for(const i of response.invoices){const prior=seen.get(i.nullifier);if(prior&&prior.commitment!==i.commitment)throw new Error('PRIVATE_CONTRIBUTION_CONFLICT');seen.set(i.nullifier,i);}
   const invoices=[...seen.values()];await this.store.put({id:'private-index:'+session.id,invoices,at_ms:this.clock()});return invoices;
  }
@@ -176,7 +202,7 @@ export class Coordinator{
  async readSnapshot(session){
   const deployment={protocol_version:4,workflow_revision:this.config.workflow_revision,network:this.config.network,vault:this.config.vault,token:this.config.token,decimals:6,code_hash:this.config.code_hash,rpc_url:this.config.rpc_url,rpc_urls:this.config.rpc_urls??[this.config.rpc_url]};
   const eventPage=this.store.eventPage(session.id);
-  const basic={session:{id:session.id,created_at_ms:session.created_at_ms,participants:session.participants,initial_balance:'1000000',expires_at_ms:session.expires_at_ms,state:session.state??'READY',testnet:true,setup_progress:session.setup_progress??null,clearing_policy:session.clearing_policy??{mode:'automatic'}},deployment,event_page:{next_cursor:eventPage.next_cursor},privacy:{enabled:Boolean(this.config.private?.enabled),verified:Boolean(this.config.private?.private_round_verified),worker_hash:this.config.private?.hash,reason:this.config.private?.enabled?'Invoice contents and deliverables are encrypted for the participating agents. Participants, net movements and timing remain public.':'Private computation is being connected.'},intents:{enabled:Boolean(this.config.intents?.dry_quotes_enabled),network:'mainnet',routes_exercised:Boolean(this.config.intents?.mainnet_routes_exercised),reason:'Funding and payouts route through owner-controlled accounts. The free session uses test funds.'}};
+  const basic={session:{id:session.id,created_at_ms:session.created_at_ms,participants:session.participants,initial_balance:session.initial_balance??'1000000',agent_count:session.agent_count??3,judge_testing:session.judge_testing===true,expires_at_ms:session.expires_at_ms,state:session.state??'READY',testnet:true,setup_progress:session.setup_progress??null,clearing_policy:session.clearing_policy??{mode:'automatic'}},deployment,event_page:{next_cursor:eventPage.next_cursor},privacy:{enabled:Boolean(this.config.private?.enabled),verified:Boolean(this.config.private?.private_round_verified),worker_hash:this.config.private?.hash,reason:this.config.private?.enabled?'Invoice contents and deliverables are encrypted for the participating agents. Participants, net movements and timing remain public.':'Private computation is being connected.'},intents:{enabled:Boolean(this.config.intents?.dry_quotes_enabled),network:'mainnet',routes_exercised:Boolean(this.config.intents?.mainnet_routes_exercised),reason:'Funding and payouts route through owner-controlled accounts. The free session uses test funds.'}};
   if(session.state&&session.state!=='READY')return{...basic,balances:[],invoices:[],private_invoices:[],rounds:[],jobs:[],events:eventPage.items,last_sync_at_ms:null,financial_data_available:false};
   this.recoverRoundIndex(session);
   const client=await this.getClient(),seen=new Map();
@@ -187,8 +213,8 @@ export class Coordinator{
   ]);
   for(const p of session.participants){let cursor=0;do{const page=await client.listInvoices(cursor,100,p.account_id);for(const i of page.items)seen.set(i.spec.id,i);cursor=page.next_cursor;}while(cursor!==null);}
   const fundingGroups=[],research=session.participants.find(p=>p.kind==='research');
-  if(research&&client.purchaseGroup)for(const job of this.store.jobs(session.id).filter(j=>j.id.startsWith('run-'))){
-   const id=v4PurchaseGroupId(this.config,research.account_id,job.payload.request_id);
+  if(research&&client.purchaseGroup)for(const job of this.store.jobs(session.id).filter(j=>j.id.startsWith('run-')||j.id.startsWith('test-netting-')&&j.group_id)){
+   const id=job.group_id??v4PurchaseGroupId(this.config,research.account_id,job.payload.request_id);
    try{const group=await client.purchaseGroup(id);fundingGroups.push(group);if(group.round_id)this.appendRound(session,group.round_id);}
    catch(error){if(!/PURCHASE_GROUP_NOT_FOUND/.test(error.message))throw error;}
   }
@@ -199,7 +225,7 @@ export class Coordinator{
     const pending=await client.privateRequest(id);
     // A durable local intent can precede successful inclusion. Keep its job
     // visible, without inventing a financial round or failing other reads.
-    if(!pending&&!this.store.jobs(session.id).some(j=>['clear-','funding-net-'].some(prefix=>j.id.startsWith(prefix))&&j.round_id===id))throw new Error('ROUND_SYNCHRONIZATION_UNAVAILABLE');
+    if(!pending&&!this.store.jobs(session.id).some(j=>['clear-','funding-net-','test-netting-'].some(prefix=>j.id.startsWith(prefix))&&j.round_id===id))throw new Error('ROUND_SYNCHRONIZATION_UNAVAILABLE');
    }
   }
   let privateInvoices=[],privateDataAvailable=true;
@@ -210,6 +236,7 @@ export class Coordinator{
   this.lastSync=this.clock();
   return{...basic,balances,external_balances:externalBalances,recovery_withdrawals:recoveryWithdrawals,invoices:[...seen.values()].sort((a,b)=>a.sequence-b.sequence),private_invoices:privateInvoices.map(({envelope,...i})=>i),private_data_available:privateDataAvailable,rounds,
    jobs:jobs.map(j=>({id:j.id,state:j.state,result:j.result?.kind==='encrypted-result'?null:j.result??null,sealed_result:j.result?.kind==='encrypted-result'?j.result:null,error:j.error??null})),
+   test_jobs:this.store.jobs(session.id).filter(j=>j.id.startsWith('test-netting-')).map(j=>({id:j.id,state:j.state,phase:j.phase??null,error:j.error??null,agent_count:j.payload.agent_count,private:j.payload.privacy==='encrypted',invoice_count:j.invoice_count??null,result:j.result??null})),
    pending_actions:this.store.jobs(session.id).filter(j=>j.id.startsWith('clear-')&&j.state!=='COMPLETE').map(j=>({id:j.id,state:j.state,reason:j.reason??j.error??null,round_id:j.round_id??null,private:j.payload.privacy==='encrypted'})),
    funding_groups:fundingGroups,account_activity:activity,owner_operations:this.store.ownerOperations(session.participants.map(p=>p.account_id)),history_data_available:historyDataAvailable,events:eventPage.items,last_sync_at_ms:this.lastSync,financial_data_available:true};
  }
@@ -303,8 +330,10 @@ export class Coordinator{
  }
  recordSettlement(session,result){const round=result.value;this.store.eventOnce(session.id,'round-settled',round.input.id,{tx_hash:result.tx_hash,evidence:result.evidence,net_settlement_volume:round.net_settlement_volume,private:round.input.private});}
  async tick(){
+  this.tester?.resume();
   let firstError;
-  for(const session of this.store.pendingSessions()){
+  for(const session of await this.scheduledAuditSessions()){
+   this.auditSchedule.set(session.id,{...this.auditSchedule.get(session.id),at:this.clock()});
    try{
    if(session.state&&session.state!=='READY')continue;
    const client=await this.getClient();
@@ -326,7 +355,9 @@ export class Coordinator{
     if(job.id.startsWith('run-')&&!this.running.has(job.id)){const r={...job.payload,privacy:job.payload.privacy==='encrypted'?'private':job.payload.privacy};void this.run(session,r).catch(()=>{});}
     else if(job.id.startsWith('clear-')&&!this.running.has(job.id)&&(!job.automatic||(this.store.session(session.id)?.clearing_policy?.mode??'automatic')==='automatic')){const r={...job.payload,privacy:job.payload.privacy==='encrypted'?'private':job.payload.privacy};await this.clear(session,r,{automatic:Boolean(job.automatic)}).catch(()=>{});}
    }
-   const data=await this.snapshot(this.store.session(session.id)??session);
+   const auditVersion=this.auditInvalidations.get(session.id),data=await this.snapshot(this.store.session(session.id)??session);
+   this.auditSchedule.set(session.id,{at:this.clock(),pending:pendingAudit(data)});
+   if(this.auditInvalidations.get(session.id)===auditVersion)this.auditInvalidations.delete(session.id);
    for(const job of this.store.jobs(session.id).filter(j=>j.id.startsWith('run-')&&j.state==='FAILED')){
     const research=session.participants.find(p=>p.kind==='research');
     const group=research&&(data.funding_groups??[]).find(g=>g.input.id===v4PurchaseGroupId(this.config,research.account_id,job.payload.request_id));
@@ -342,7 +373,7 @@ export class Coordinator{
     if(round.status==='READY'&&automatic()){const settled=await client.settleRound(round);this.recordSettlement(session,settled);await this.store.put({id:'terminal-round:'+round.input.id,round:settled.value});this.invalidateSnapshot(session.id);}
     else if(round.status==='COLLECTING'&&round.input.deadline_ms<=this.clock()){const expired=await client.expireRound(round.input.id);await this.store.put({id:'terminal-round:'+round.input.id,round:expired.value});this.invalidateSnapshot(session.id);}
    }catch{}
-   if(data.private_data_available)for(const receipt of data.private_invoices.filter(i=>i.status==='SIGNED')){
+   if(data.private_data_available)for(const receipt of data.private_invoices.filter(i=>i.status==='SIGNED'&&i.verification_mode!=='funded-group')){
     const encrypted=(await this.store.get('private-index:'+session.id))?.invoices.find(i=>i.nullifier===receipt.nullifier);
     if(encrypted)await this.verifyPrivateReceipt(session,{envelope:encrypted.envelope,parties:encrypted.parties}).catch(()=>{});
    }

@@ -2,7 +2,7 @@ import {NextRequest,NextResponse}from 'next/server';import {createHash}from 'nod
 import {coordinatorUrl}from '../../../../lib/gateway';
 import {boundedJson}from '../../../../lib/request';
 export const dynamic='force-dynamic';export const maxDuration=60;
-const GET_PATHS=new Set(['snapshot','history','config','services','private-key','sessions','intents/tokens']);const POST_PATHS=new Set(['session','session-new','session-switch','run','clear','clearing-policy','withdraw','revoke','settle','cancel','expire','recover','deposit','intents/quote','intents/status']);
+const GET_PATHS=new Set(['snapshot','history','config','services','private-key','sessions','intents/tokens']);const POST_PATHS=new Set(['session','session-new','session-switch','run','clear','netting-test','clearing-policy','withdraw','revoke','settle','cancel','expire','recover','deposit','intents/quote','intents/status']);
 async function proxy(req:NextRequest,context:{params:Promise<{path:string[]}>}){
  const route=(await context.params).path.join('/');const allowed=req.method==='GET'?GET_PATHS:POST_PATHS;
  if(!allowed.has(route))return NextResponse.json({error:'METHOD_NOT_FOUND'},{status:404});
@@ -33,7 +33,9 @@ async function proxy(req:NextRequest,context:{params:Promise<{path:string[]}>}){
    // arbitrary client-supplied forwarding headers as a sponsorship identity.
    const forwarded=process.env.VERCEL==='1'?req.headers.get('x-forwarded-for')?.split(',')[0].trim():undefined;
    if(process.env.VERCEL==='1'&&(!forwarded||!isIP(forwarded)))throw new Error('TRUSTED_CLIENT_IP_REQUIRED');
-   body={ip_hash:createHash('sha256').update(`${token}:demo-ip:${forwarded??'local-proxy'}`).digest('hex')};
+   const requested=(body as Record<string,unknown>)?.agent_count??3;
+   if(!Number.isInteger(requested)||Number(requested)<3||Number(requested)>12)return NextResponse.json({error:'TEST_AGENT_COUNT_LIMIT'},{status:400});
+   body={ip_hash:createHash('sha256').update(`${token}:demo-ip:${forwarded??'local-proxy'}`).digest('hex'),agent_count:requested};
   }
   const target=new URL(`/${route}`,base);if(route==='history')target.search=req.nextUrl.search;
   const response=await fetch(target,{method:req.method,headers:{'Content-Type':'application/json','x-ach-service-token':token,...(session?{Authorization:`Bearer ${session}`}:{})},...(req.method==='POST'?{body:JSON.stringify(body)}:{}),cache:'no-store',redirect:'error',signal:AbortSignal.timeout(55000)});

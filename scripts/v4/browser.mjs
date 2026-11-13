@@ -19,8 +19,18 @@ if(process.argv.includes('--sdk-only')){
   child.once('error',()=>{clearTimeout(timer);reject(new Error(stage));});
   child.once('close',(code,signal)=>{clearTimeout(timer);if(code!==0||signal)reject(new Error(stage));else resolve({exit_code:code});});
  });
- const install=await execute('npm',['install','--ignore-scripts','--no-audit','--no-fund',...(process.argv.includes('--offline')?['--offline']:[]),path.join(repoRoot,'web/public/sdk/ach-client-4.0.0.tgz'),path.join(repoRoot,'web/public/sdk/ach-intents-4.0.0.tgz')],'ISOLATED_SDK_INSTALL_FAILED','install.log');
- const source='import {writeFileSync}from "node:fs";import {AchV4Client,V4NearTransport,V4RpcProvider,v4PurchaseGroupId,v4FundedInvoiceId,v4FundingGroupHash} from "@ach/client/v4";import {OwnerIntentsRouter,NearTokenRouteSender,destinationReceiptVerifier} from "@ach/intents/owner";if(![AchV4Client,V4NearTransport,V4RpcProvider,OwnerIntentsRouter,NearTokenRouteSender,destinationReceiptVerifier,v4PurchaseGroupId,v4FundedInvoiceId,v4FundingGroupHash,AchV4Client.prototype.authorizePurchaseGroup,V4NearTransport.prototype.reconcile,NearTokenRouteSender.prototype.reconcileExactQuote].every(x=>typeof x==="function"))throw new Error("MISSING_EXPORT");writeFileSync(new URL("./import-verification.json",import.meta.url),JSON.stringify({kind:"isolated-sdk-install",passed:true,node:process.version,exports:["AchV4Client","V4NearTransport","V4RpcProvider","OwnerIntentsRouter","NearTokenRouteSender","destinationReceiptVerifier","v4PurchaseGroupId","v4FundedInvoiceId","v4FundingGroupHash"],methods:["authorizePurchaseGroup","reconcile","reconcileExactQuote"],resolved_modules:{client:import.meta.resolve("@ach/client/v4"),intents:import.meta.resolve("@ach/intents/owner")}}),{mode:0o600,flag:"wx"});';
+ const install=await execute('npm',['install','--ignore-scripts','--no-audit','--no-fund',...(process.argv.includes('--offline')?['--offline']:[]),path.join(repoRoot,'web/public/sdk/ach-client-4.0.1.tgz'),path.join(repoRoot,'web/public/sdk/ach-intents-4.1.0.tgz')],'ISOLATED_SDK_INSTALL_FAILED','install.log');
+ const source=[
+  'import {readFileSync,writeFileSync} from "node:fs";',
+  'import {AchV4Client,V4NearTransport,V4RpcProvider,v4PurchaseGroupId,v4FundedInvoiceId,v4FundingGroupHash} from "@ach/client/v4";',
+  'import {isIntentsAssetId} from "@ach/intents";',
+  'import {OwnerIntentsRouter,NearTokenRouteSender,destinationReceiptVerifier} from "@ach/intents/owner";',
+  'if(![AchV4Client,V4NearTransport,V4RpcProvider,OwnerIntentsRouter,NearTokenRouteSender,destinationReceiptVerifier,isIntentsAssetId,v4PurchaseGroupId,v4FundedInvoiceId,v4FundingGroupHash,AchV4Client.prototype.authorizePurchaseGroup,V4NearTransport.prototype.reconcile,NearTokenRouteSender.prototype.reconcileExactQuote].every(x=>typeof x==="function"))throw new Error("MISSING_EXPORT");',
+  'if(!["nep141:token.near","nep245:v2_1.omni.hot.tg:1_11111111111111111111","1cs_v1:near:eth:0x0000000000000000000000000000000000000000"].every(isIntentsAssetId))throw new Error("CATALOGUE_ASSET_SUPPORT_MISSING");',
+  'const version=JSON.parse(readFileSync(new URL("./node_modules/@ach/intents/package.json",import.meta.url),"utf8")).version;if(version!=="4.1.0")throw new Error("SDK_VERSION_MISMATCH");',
+  'const clientVersion=JSON.parse(readFileSync(new URL("./node_modules/@ach/client/package.json",import.meta.url),"utf8")).version;if(clientVersion!=="4.0.1")throw new Error("SDK_VERSION_MISMATCH");',
+  'writeFileSync(new URL("./import-verification.json",import.meta.url),JSON.stringify({kind:"isolated-sdk-install",passed:true,node:process.version,intents_version:version,exports:["AchV4Client","V4NearTransport","V4RpcProvider","OwnerIntentsRouter","NearTokenRouteSender","destinationReceiptVerifier","isIntentsAssetId","v4PurchaseGroupId","v4FundedInvoiceId","v4FundingGroupHash"],methods:["authorizePurchaseGroup","reconcile","reconcileExactQuote"],resolved_modules:{client:import.meta.resolve("@ach/client/v4"),intents:import.meta.resolve("@ach/intents/owner")}}),{mode:0o600,flag:"wx"});',
+ ].join('\n');
  const script=path.join(isolated,'verify.mjs');writeFileSync(script,source,{mode:0o600});
  const imported=await execute(process.execPath,[script],'ISOLATED_SDK_IMPORT_FAILED','import.log'),proof=path.join(isolated,'import-verification.json');
  if(!existsSync(proof))throw new Error('ISOLATED_SDK_IMPORT_EVIDENCE_REQUIRED');
@@ -97,7 +107,7 @@ async function visitAll(page){
  for(const[name,width,height]of [['landing',1440,1000],['landing',834,1000],['landing',390,844],['landing',320,844]]){await page.goto(base,{waitUntil:'networkidle'});await layout(page,name,width,height);}
   await page.getByRole('button',{name:'Show net payments',exact:true}).click();assert.equal((await page.locator('.example-net-amount').innerText()).trim(),'20 USDC');await page.getByRole('button',{name:'A and B only',exact:true}).click();assert.equal((await page.locator('.example-net-amount').innerText()).trim(),'100 USDC');check('interactive-clearing-example',{full_net:'20',subgroup_net:'100'});
  await page.goto(base+'/developers',{waitUntil:'networkidle'});assert.ok(await page.locator('#funding').count());
- for(const filename of ['ach-client-4.0.0.tgz','ach-intents-4.0.0.tgz']){const r=await page.context().request.get(base+'/sdk/'+filename);assert.ok(r.ok(),filename+' missing');assert.ok((await r.body()).length>1000);}check('downloadable-sdk');
+ for(const filename of ['ach-client-4.0.1.tgz','ach-client-4.0.0.tgz','ach-intents-4.1.0.tgz','ach-intents-4.0.0.tgz']){const r=await page.context().request.get(base+'/sdk/'+filename);assert.ok(r.ok(),filename+' missing');assert.ok((await r.body()).length>1000);}check('downloadable-sdk');
  await layout(page,'developers',390,844);
  await page.goto(base+'/proof',{waitUntil:'networkidle'});assert.ok((await page.locator('main').innerText()).includes(config.vault));check('proof-runtime-configuration');await layout(page,'proof',390,844);
 }

@@ -5,7 +5,7 @@ import { invoiceId, money } from '../../lib/v4';
 import type { Invoice } from '../../lib/v4';
 
 export const serviceNames: Record<string, string> = {
-  chart: 'Chart generation', audit: 'Data & source checks', references: 'Reference packet',
+  chart: 'Chart generation', audit: 'Data & source checks', references: 'Reference packet', 'netting-test': 'Netting test bill',
 };
 export { invoiceId } from '../../lib/v4';
 

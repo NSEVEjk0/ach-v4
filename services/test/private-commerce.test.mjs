@@ -31,6 +31,7 @@ test('late private receipt responses resume all three purchases without losing p
   for(let attempt=0;attempt<3;attempt++){
    await assert.rejects(h.coordinator.run(h.session,request),/PRIVATE_PROCESSING/);
    assert.equal(h.store.job('run-'+id).state,'WAITING','verified work must remain resumable while the remaining receipts finish');
+   if(attempt===0)h.config.private.batch_funded_invoices=true;
   }
   const response=await h.coordinator.run(h.session,request),result=sealed.open(response);
   assert.equal(result.bills.length,3);assert.equal(result.chart.audit.valid,true);
@@ -39,6 +40,55 @@ test('late private receipt responses resume all three purchases without losing p
   const before=await h.coordinator.snapshot(h.session);assert.equal(before.private_invoices.length,3);
   const round=await h.coordinator.clear(h.session,{request_id:'b'.repeat(32),privacy:'private',selected_accounts:h.session.participants.map(p=>p.account_id),invoice_ids:before.private_invoices.map(i=>i.nullifier)});
   assert.equal(round.round.status,'SETTLED');assert.equal(round.round.net_settlement_volume,'20000');
+ }finally{h.cleanup();}
+});
+
+test('one funded-group worker run verifies all signed private bills and releases nothing before its chain proof',async()=>{
+ const h=await setup({privateMode:true,batchPrivate:true});try{
+  const id='1'.repeat(32),key=await h.actors.get('research').encryptionKey(h.session);
+  const sealed=encryptedBrief(h.config,h.session,id,key.public_key,'Private group 92713',[{label:'Confidential requests',value:42}]);
+  const request={request_id:id,mode:'report',budget:'300000',privacy:'private',sealed_brief:sealed.sealed_brief};
+  const prepare=h.coordinator.preparePrivateGroup.bind(h.coordinator);
+  h.coordinator.preparePrivateGroup=async()=>({ready:false,state:'WAITING'});
+  await assert.rejects(h.coordinator.run(h.session,request),/PRIVATE_PROCESSING/);
+  const pending=await h.coordinator.snapshot(h.session);
+  assert.equal(pending.private_invoices.length,3);
+  assert.ok(pending.private_invoices.every(i=>i.status==='SIGNED'&&i.verification_mode==='funded-group'));
+  assert.equal(pending.funding_groups[0].status,'FUNDED');
+  assert.equal(pending.jobs[0].result,null);
+  assert.equal(h.workerRuns.filter(r=>['verify','net'].includes(r.input.operation)).length,0);
+  const staged=h.actorStores.get('visual').jobs(h.session.id).find(j=>j.id.startsWith('sell-')&&j.payload.order.service==='chart');
+  await assert.rejects(h.actors.get('visual').releasePurchase(h.session,{purchase_id:staged.spec.purchase_id}),/PAYMENT_COMMITMENT_REQUIRED/);
+  await h.coordinator.tick();await Promise.allSettled([...h.coordinator.running.values()]);
+  assert.equal(h.workerRuns.filter(r=>['verify','net'].includes(r.input.operation)).length,0,'reconciliation must preserve the complete-group verification choice');
+  h.coordinator.preparePrivateGroup=prepare;
+  const restarted=h.restart(),result=sealed.open(await restarted.run(h.session,request));
+  assert.equal(result.bills.length,3);assert.ok(result.bills.every(i=>i.status==='READY'));
+  assert.equal(result.chart.audit.valid,true);
+  assert.equal(h.workerRuns.filter(r=>r.input.operation==='verify').length,0);
+  const net=h.workerRuns.filter(r=>r.input.operation==='net');assert.equal(net.length,1);
+  assert.equal(net[0].input.encrypted_invoices.length,3);assert.equal(net[0].input.disclosure_signatures.length,3);
+  assert.ok(!JSON.stringify(net[0]).includes('92713'));
+  const before=await restarted.snapshot(h.session),settled=await restarted.clear(h.session,{request_id:'2'.repeat(32),privacy:'private',selected_accounts:h.session.participants.map(p=>p.account_id),invoice_ids:before.private_invoices.map(i=>i.nullifier)});
+  assert.equal(settled.round.status,'SETTLED');assert.equal(settled.round.net_settlement_volume,'20000');
+  assert.equal(h.workerRuns.filter(r=>r.input.operation==='net').length,1);
+  for(const participant of h.session.participants)assert.equal((await h.identities.get(participant.kind).client.balance()).gross_purchase_budget_used,'100000');
+ }finally{h.cleanup();}
+});
+
+test('a lost full-group worker response resumes its original round after restart without another execution',async()=>{
+ const h=await setup({privateMode:true,batchPrivate:true});try{
+  const id='3'.repeat(32),key=await h.actors.get('research').encryptionKey(h.session);
+  const sealed=encryptedBrief(h.config,h.session,id,key.public_key,'Recover the same private group',[{label:'Requests',value:42}]);
+  const request={request_id:id,mode:'report',budget:'300000',privacy:'private',sealed_brief:sealed.sealed_brief};
+  const owner=h.owners.get('coordinator'),send=owner.requestPrivateRound.bind(owner);let dropped=false;
+  owner.requestPrivateRound=async input=>{const result=await send(input);if(!input.verification_only&&!dropped){dropped=true;throw new V4BroadcastUnknown('private:'+input.id,'confirmed-response-lost');}return result;};
+  await assert.rejects(h.coordinator.run(h.session,request),V4BroadcastUnknown);
+  assert.equal(h.store.job('run-'+id).state,'WAITING');
+  const result=sealed.open(await h.restart().run(h.session,request));assert.equal(result.bills.length,3);
+  assert.ok(result.bills.every(i=>['READY','SETTLED'].includes(i.status)));
+  assert.equal(h.workerRuns.filter(r=>r.input.operation==='net').length,1);
+  assert.equal(h.workerRuns.filter(r=>r.input.operation==='verify').length,0);
  }finally{h.cleanup();}
 });
 
