@@ -3,6 +3,7 @@ import {readFileSync,writeFileSync,mkdirSync,existsSync,chmodSync,mkdtempSync,co
 import {spawn,execFileSync}from 'node:child_process';
 import {createPublicKey,verify}from 'node:crypto';
 import {parseEnv}from 'node:util';
+import {homedir}from 'node:os';
 import path from 'node:path';
 import {repoRoot,privatePath,manifestPath,loadPrivateEnvironment}from '../../services/lib/paths.mjs';
 import {requireServiceLayout}from '../../services/lib/workflow.mjs';
@@ -67,11 +68,11 @@ function deployedUrl(result){
  const url=raw?(raw.startsWith('https://')?raw:'https://'+raw):result.stdout.match(/https:\/\/ach-[a-z0-9-]+\.vercel\.app/g)?.at(-1);
  assert.ok(url&&new URL(url).hostname.endsWith('.vercel.app'),'VERCEL_DEPLOYMENT_URL_REQUIRED');return url;
 }
-async function verifyHosted(url,protectedPreview=false){
- let r=await fetch(new URL('/api/v4/config',url),{signal:AbortSignal.timeout(60000)});
- if(protectedPreview&&[401,403].includes(r.status)){
+async function verifyHosted(url,protectedDeployment=false){
+ let r=await fetch(new URL('/api/v4/config',url),{signal:AbortSignal.timeout(60000),redirect:'manual'});
+ if(protectedDeployment&&[302,303,307,308,401,403].includes(r.status)){
   const res=await command(['curl','/api/v4/config','--deployment',url,'--','--fail','--silent','--show-error'],{label:'preview-config-with-protection'});
-  const actual=JSON.parse(res.stdout);assert.equal(actual.vault,config.vault);assert.equal(actual.code_hash,config.code_hash);return;
+  const actual=JSON.parse(res.stdout);assert.equal(actual.vault,config.vault);assert.equal(actual.code_hash,config.code_hash);assert.equal(actual.token,config.token);assert.equal(actual.network,config.network);return;
  }
  assert.ok(r.ok,'HOSTED_RUNTIME_UNAVAILABLE');const actual=await r.json();assert.equal(actual.vault,config.vault);assert.equal(actual.token,config.token);assert.equal(actual.network,config.network);assert.equal(actual.code_hash,config.code_hash);
  for(const page of ['/','/workspace','/developers','/proof','/sdk/ach-client-4.0.2.tgz','/sdk/ach-client-4.0.0.tgz','/sdk/ach-intents-4.1.0.tgz','/sdk/ach-intents-4.0.0.tgz']){r=await fetch(new URL(page,url),{signal:AbortSignal.timeout(60000)});assert.ok(r.ok,'HOSTED_PAGE_UNAVAILABLE:'+page);}
@@ -80,6 +81,23 @@ async function browser(url,smoke=true){
  const args=['scripts/v4/browser.mjs','--url',url,'--reuse-live',...(smoke?['--smoke']:[])];
  const code=await new Promise((resolve,reject)=>{const child=spawn(process.execPath,args,{cwd:repoRoot,env:process.env,stdio:'inherit'});child.on('error',reject);child.on('close',resolve);});
  assert.equal(code,0,'HOSTED_BROWSER_VERIFICATION_FAILED');
+}
+async function browserBypass(url,environmentFile){
+ const configured=parseEnv(readFileSync(environmentFile,'utf8')).VERCEL_AUTOMATION_BYPASS_SECRET;
+ if(configured)return configured;
+ // The CLI's automation bypass may belong to the project without appearing
+ // in its environment. Read that existing entry through the CLI credential.
+ const credential=process.env.VERCEL_TOKEN??JSON.parse(readFileSync(path.join(homedir(),'.local/share/com.vercel.cli/auth.json'),'utf8')).token;
+ assert.ok(credential,'VERCEL_AUTHENTICATION_REQUIRED');
+ const response=await fetch('https://api.vercel.com/v9/projects/prj_zrf0MeNBv2Cdj76I7HK09gaCBZVa?teamId=team_osASFxy0lZFhvkPehOUzYAXS',{headers:{authorization:'Bearer '+credential},signal:AbortSignal.timeout(20000)});
+ assert.ok(response.ok,'VERCEL_PROJECT_UNAVAILABLE');const project=await response.json();
+ assert.equal(project.id,'prj_zrf0MeNBv2Cdj76I7HK09gaCBZVa','EXPECTED_ACH_PROJECT_REQUIRED');
+ for(const secret of Object.keys(project.protectionBypass??{}).filter(key=>/^[A-Za-z0-9_-]{20,}$/.test(key))){
+  const probe=await fetch(new URL('/api/v4/config',url),{headers:{'x-vercel-protection-bypass':secret},redirect:'manual',signal:AbortSignal.timeout(20000)});
+  if(!probe.ok||!probe.headers.get('content-type')?.includes('application/json'))continue;
+  const actual=await probe.json();assert.equal(actual.vault,config.vault);assert.equal(actual.code_hash,config.code_hash);return secret;
+ }
+ throw new Error('PROJECT_AUTOMATION_BYPASS_REQUIRED');
 }
 try{
  await discovery();await backup();state.gateway_verified_at=new Date().toISOString();save();
@@ -91,15 +109,13 @@ try{
  const source=deploymentSource();
  await environment('preview');
  const preview=deployedUrl(await command(['deploy','--yes','--project','ach','--json'],{label:'preview-deploy',cwd:source}));state.preview=preview;save();await verifyHosted(preview,true);state.preview_config_verified_at=new Date().toISOString();save();
- // vercel curl retrieves the project's existing automation-bypass entry through
- // its credential store. Pull it privately for the browser, never into args.
+ // Keep browser protection credentials private and out of command arguments.
  const previewEnvironment=path.join(output,'preview-deployment.env');await command(['env','pull',previewEnvironment,'--environment','preview','--project','ach','--yes'],{label:'preview-environment'});chmodSync(previewEnvironment,0o600);
- const bypass=parseEnv(readFileSync(previewEnvironment,'utf8')).VERCEL_AUTOMATION_BYPASS_SECRET;
- if(bypass)process.env.ACH_V4_PREVIEW_BYPASS=bypass;
+ process.env.ACH_V4_PREVIEW_BYPASS=await browserBypass(preview,previewEnvironment);
  await browser(preview);state.preview_browser_verified_at=new Date().toISOString();save();
  if(process.argv.includes('--preview-only')){console.log(JSON.stringify({preview,verification:'passed',public_cutover:false,repository_pushed:config.source?.repository_pushed===true}));process.exit(0);}
  await environment('production');
- const production=deployedUrl(await command(['deploy','--prod','--skip-domain','--yes','--project','ach','--json'],{label:'production-staged-deploy',cwd:source}));state.production=production;save();await verifyHosted(production);await browser(production);state.production_browser_verified_at=new Date().toISOString();save();
+ const production=deployedUrl(await command(['deploy','--prod','--skip-domain','--yes','--project','ach','--json'],{label:'production-staged-deploy',cwd:source}));state.production=production;save();await verifyHosted(production,true);await browser(production);state.production_browser_verified_at=new Date().toISOString();save();
  await command(['promote',production,'--yes'],{label:'production-promote'});
  await verifyHosted('https://ach-rosy.vercel.app');await browser('https://ach-rosy.vercel.app');
  state.public_url='https://ach-rosy.vercel.app';state.promoted_at=new Date().toISOString();delete state.failure;save();

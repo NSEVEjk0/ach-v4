@@ -123,13 +123,15 @@ export class NettingTester{
   publicJob.round_id=group.round_id;this.store.saveJob(publicJob);
   const latest=this.store.session(session.id)??session;latest.round_ids=[...new Set([...(latest.round_ids??[]),group.round_id])];this.store.updateSession(latest);session.round_ids=latest.round_ids;
   let round=await client.round(group.round_id);
-  if(round.status==='READY'){
+  if(round.status==='READY'||round.status==='SETTLED'&&publicJob.settlement_operation_id==='settle:'+round.input.id){
+   publicJob.settlement_operation_id='settle:'+round.input.id;this.store.saveJob(publicJob);
    this.stage(publicJob,'Settling the funded round on NEAR');
    const settled=await client.settleRound(round);round=settled.value;
    this.store.eventOnce(session.id,'round-settled',round.input.id,{tx_hash:settled.tx_hash,evidence:settled.evidence,net_settlement_volume:round.net_settlement_volume,private:round.input.private});
   }
   if(round.status!=='SETTLED')throw new Error('ROUND_SYNCHRONIZATION_UNAVAILABLE');
   publicJob.state='COMPLETE';publicJob.phase='Settled';publicJob.result={round_id:round.input.id,group_id:job.input.id,agent_count:input.agent_count,invoice_count:job.input.orders.length,private:input.privacy==='private',network:this.config.network,gross_invoice_volume:round.gross_invoice_volume,net_settlement_volume:round.net_settlement_volume,elapsed_ms:this.clock()-publicJob.created_at_ms};
+  delete publicJob.error;delete publicJob.retry_at_ms;
   this.store.saveJob(publicJob);job.state='COMPLETE';this.privateStore.saveJob(job);this.onChange(session.id);return publicJob.result;
  }
  async privateSummary(session){

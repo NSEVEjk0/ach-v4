@@ -10,7 +10,12 @@ function tester(h,privateStore){
 test('twelve judge agents sign actual public Wasm bills, settle their exact net, and replay without another payment',async()=>{
  const h=await setup({agentCount:12}),privateStore=new StateStore(path.join(h.temp,'netting.sqlite'),{sealingKey:'4'.repeat(64)}),engine=tester(h,privateStore);h.coordinator.tester=engine;
  try{
-  const input={request_id:'5'.repeat(32),agent_count:12,privacy:'public'},before=await h.coordinator.snapshot(h.session),result=await engine.run(h.session,input),after=await h.coordinator.snapshot(h.session);
+  const client=h.identities.get('coordinator').client,settle=client.settleRound.bind(client);let lost=true;
+  client.settleRound=async round=>{const result=await settle(round);if(lost){lost=false;throw new V4BroadcastUnknown('settle:'+round.input.id,'confirmed-lost');}return result;};
+  const input={request_id:'5'.repeat(32),agent_count:12,privacy:'public'},before=await h.coordinator.snapshot(h.session);
+  await assert.rejects(engine.run(h.session,input),V4BroadcastUnknown);const settledTransactions=h.chain.transactions.length;
+  const result=await engine.run(h.session,input),after=await h.coordinator.snapshot(h.session);
+  assert.equal(h.chain.transactions.length,settledTransactions);assert.equal(h.store.job('test-netting-'+input.request_id).error,undefined);assert.equal(h.store.job('test-netting-'+input.request_id).retry_at_ms,undefined);
   assert.equal(result.invoice_count,12);assert.equal(result.net_settlement_volume,'20000');assert.equal(result.gross_invoice_volume,'980000');
   assert.equal(after.rounds.length,1);assert.equal(after.rounds[0].status,'SETTLED');assert.equal(after.rounds[0].approvals.length,12);assert.equal(after.invoices.length,12);
   assert.equal(after.balances.reduce((sum,b)=>sum+BigInt(b.balance),0n),before.balances.reduce((sum,b)=>sum+BigInt(b.balance),0n));
