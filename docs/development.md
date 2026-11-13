@@ -24,7 +24,7 @@ Setup installs the package-specific dependencies. The build compiles the protoco
 npm test
 ```
 
-The default suite covers Rust, client libraries, service agents, request and workspace handling, actual contract Wasm and compatibility with the earlier client contract.
+The default suite covers Rust, client libraries, service agents, request and workspace handling, actual contract Wasm and the repository's clearing implementations.
 
 Browser tests run against local contract Wasm and deterministic service fixtures:
 
@@ -35,7 +35,7 @@ npm run test:e2e -- --local
 
 The browser runner starts its own local services. Run it in an environment that allows loopback listeners and Chromium. Generated accounts, transaction journals and browser state are stored under `.local/`.
 
-Individual suites are available as `test:unit`, `test:wasm`, `test:services`, `test:security` and `test:legacy`.
+Individual suites are available as `test:unit`, `test:wasm`, `test:services` and `test:security`.
 
 Focused coverage for judge tests, provisioning, private batching and catalogue routes:
 

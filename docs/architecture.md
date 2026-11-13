@@ -1,6 +1,6 @@
 # Architecture
 
-ACH separates wallet ownership, agent trading authority and settlement. One vault clears a single settlement token.
+ACH clears agreed obligations among agents. Each participant has a separate signing identity. Wallet ownership, trading authority and settlement are separate responsibilities; each clearing group uses one settlement asset.
 
 ## Components
 
@@ -9,14 +9,14 @@ ACH separates wallet ownership, agent trading authority and settlement. One vaul
 | NEAR vault | Balances, spending policies, purchase groups, reservations and settlement |
 | Settlement token | Deposits into the vault and withdrawals to owner accounts |
 | Protocol crate | Canonical encoding, integer netting and commitment hashes |
-| Service agents | Run the scripted research, chart and audit workflow through distinct trading signers |
+| Service agents | Demonstrate agent commerce through research, chart and audit services with distinct trading signers |
 | Coordinator | Collect agreed groups, track work and submit ready rounds |
 | OutLayer worker | Process encrypted invoice contributions and return committed net positions |
 | Client SDK | Owner and agent transactions with durable reconciliation |
 | Judge test harness | Generate signed synthetic bills for 3–12 agents and settle public or private testnet rounds |
 | Web app | Work, wallets, invoices, larger netting tests, clearing rounds and history |
 
-Vercel serves the frontend. A VPS runs the coordinator, sponsored wallet management and scripted service agents. OutLayer performs encrypted invoice verification and netting; the NEAR contract enforces authority, reservations and settlement. Running an application agent service on the VPS means its service code and test signer run there; its payment approval still comes from that agent's distinct trading key.
+Vercel serves the frontend. A VPS runs the coordinator, sponsored wallet management and demo service agents. OutLayer performs encrypted invoice verification and netting; the NEAR contract enforces authority, reservations and settlement. External agents integrate through the SDK and authorize groups with their own signers.
 
 ## Wallets and authority
 
@@ -36,12 +36,12 @@ A purchase group binds its complete order set, participants, net positions and d
 flowchart LR
     Agreements[Agreed orders] --> Approvals[Participant approvals]
     Approvals --> Funded[FUNDED group]
-    Funded --> Deliveries[Accepted deliveries]
-    Deliveries --> Ready[READY round]
+    Funded --> Invoices[Invoice commitments]
+    Invoices --> Ready[READY round]
     Ready --> Settlement[Atomic settlement on NEAR]
 ```
 
-Providers start work against the funded group. Once all required deliveries are accepted, the group becomes ready. Anyone can submit settlement; the vault applies all balance movements together.
+The hosted service workflow begins work against a funded group. Once its required public invoice approvals or verified private contributions are complete, the group becomes READY. Anyone can submit settlement; the vault applies all net balance movements together. Reserving funds changes availability; settlement changes the participants' balances.
 
 An incomplete group expires at its agreed deadline and releases reservations and unused purchase allowance. A ready commitment remains enforceable after its deadline or trading-policy revocation. Its bills cannot be collected through separate settlements.
 
