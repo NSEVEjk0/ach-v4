@@ -36,7 +36,7 @@ export function sourceFingerprint(gitContext){
  const dirty=gitContext?.dirty??Boolean(execFileSync('git',['status','--porcelain'],{cwd:repository,encoding:'utf8'}).trim());
  if(!/^[a-f\d]{40}$/.test(commit)||typeof dirty!=='boolean')throw new Error('VERIFIED_GIT_CONTEXT_REQUIRED');
  const fingerprint=digest(JSON.stringify(normalized,null,2)),publication=gitContext?.publication;
- if(publication!==undefined&&(!publication||publication.verified!==true||publication.repository!=='NSEVEjk0/ach-v4'||publication.commit!==commit||publication.fingerprint_sha256!==fingerprint||dirty||!Number.isFinite(Date.parse(publication.verified_at))))throw new Error('PUBLISHED_SOURCE_CONTEXT_MISMATCH');
+ if(publication!==undefined&&(!publication||publication.verified!==true||publication.repository!=='NSEVEjk0/ACH'||publication.commit!==commit||publication.fingerprint_sha256!==fingerprint||dirty||!Number.isFinite(Date.parse(publication.verified_at))))throw new Error('PUBLISHED_SOURCE_CONTEXT_MISMATCH');
  return{
   commit,dirty,
   fingerprint_sha256:fingerprint,file_count:normalized.length,

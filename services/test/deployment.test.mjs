@@ -107,7 +107,7 @@ test('a corrected release cannot reuse historical flaw-reproduction evidence, fa
  for(const altered of [{...browser,passed:false},{...browser,checks:browser.checks.slice(1)},{...browser,workflow_findings:[{id:'W06'}]},{...browser,workflow_findings:'invalid'}])assert.throws(()=>requireCorrectedBrowserEvidence(altered,{hostedJourney:true}),/CURRENT_CORRECTED_BROWSER_EVIDENCE_REQUIRED/);
  const context={commit:'a'.repeat(40),dirty:false},fingerprint=sourceFingerprint(context);
  assert.equal(fingerprint.repository_pushed,false);
- const publication={verified:true,repository:'NSEVEjk0/ach-v4',commit:context.commit,fingerprint_sha256:fingerprint.fingerprint_sha256,verified_at:new Date().toISOString()};
+ const publication={verified:true,repository:'NSEVEjk0/ACH',commit:context.commit,fingerprint_sha256:fingerprint.fingerprint_sha256,verified_at:new Date().toISOString()};
  assert.equal(sourceFingerprint({...context,publication}).repository_pushed,true);
  for(const altered of [{...publication,commit:'b'.repeat(40)},{...publication,fingerprint_sha256:'c'.repeat(64)},{...publication,verified:false},{...publication,repository:'another/project'}])assert.throws(()=>sourceFingerprint({...context,publication:altered}),/PUBLISHED_SOURCE_CONTEXT_MISMATCH/);
  assert.throws(()=>sourceFingerprint({...context,dirty:true,publication}),/PUBLISHED_SOURCE_CONTEXT_MISMATCH/);
