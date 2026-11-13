@@ -12,11 +12,12 @@ import {KeyPair}from '../../packages/client/dist/near.js';
 import {SERVICES}from '../agents/runtime.mjs';
 import {privatePath}from '../lib/paths.mjs';
 import {requireIdentityAccount,sessionAccountId}from '../lib/workflow.mjs';
+import {withSignerRecovery}from '../lib/transactions.mjs';
 const config=loadConfig(),store=new StateStore(privatePath('coordinator.sqlite')),token=process.env.ACH_V4_SERVICE_TOKEN;
 const identity=loadIdentity(privatePath('coordinator.json'),config,store);requireIdentityAccount(config,'coordinator',identity.data);await identity.client.assertDeployment();
 const intents=new IntentsQuotes({store});
 const owner=requireIdentityAccount(config,'coordinator',JSON.parse(readFileSync(privatePath('coordinator-owner.json'),'utf8')));
-const privateClient=new AchV4Client(config,new V4NearTransport(owner.account_id,config.rpc_urls??config.rpc_url,owner.secret_key,store),'owner');
+const privateClient=new AchV4Client(config,withSignerRecovery(new V4NearTransport(owner.account_id,config.rpc_urls??config.rpc_url,owner.secret_key,store),store),'owner');
 const call=(kind,payload,route)=>serviceFetch(config.services[kind],token)(route,payload);
 const coordinator=new Coordinator({store,config,getClient:async()=>identity.client,getPrivateClient:async()=>privateClient,snapshotTtlMs:10000,
  agents:{runBrief:(s,r)=>call('research',{session_id:s.id,request:r},'/brief'),approve:(k,s,r)=>call(k,{session_id:s.id,round:r},'/approve'),privateSummary:(k,s)=>call(k,{session_id:s.id},'/private-summary'),disclosePrivate:(k,s,r)=>call(k,{session_id:s.id,request:r},'/private-disclosure')},

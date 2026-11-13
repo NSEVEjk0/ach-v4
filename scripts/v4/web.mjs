@@ -27,12 +27,12 @@ async function command(args,{input,env=process.env,label=args[0],cwd=web}={}){
  return result;
 }
 function deploymentSource(){
- // The project builds from web/. Upload committed web files with that parent
- // directory intact; runtime keys, databases and local env files stay private.
+ // The project builds from web/ and installs the sibling client package.
+ // Archive committed source; runtime keys, databases and local env stay private.
  const source=mkdtempSync(path.join(output,'source-')),archive=path.join(source,'web.tar');
  const commit=execFileSync('git',['rev-parse','HEAD'],{cwd:repoRoot,encoding:'utf8'}).trim();
  assert.equal(execFileSync('git',['status','--porcelain','--untracked-files=no'],{cwd:repoRoot,encoding:'utf8'}).trim(),'','COMMITTED_WEB_SOURCE_REQUIRED');
- execFileSync('git',['archive','--format=tar','--output',archive,commit,'web'],{cwd:repoRoot});
+ execFileSync('git',['archive','--format=tar','--output',archive,commit],{cwd:repoRoot});
  execFileSync('tar',['-xf',archive,'-C',source]);unlinkSync(archive);
  assert.ok(existsSync(path.join(source,'web','package-lock.json')),'WEB_DEPLOYMENT_ROOT_REQUIRED');
  const link=path.join(web,'.vercel','project.json'),project=JSON.parse(readFileSync(link,'utf8'));
