@@ -69,8 +69,6 @@ The sponsored demo uses NEAR testnet and a six-decimal test USDC token with no m
 
 Standing trading permissions allow the hosted agents to authorize eligible purchase groups. In automatic mode, the coordinator settles rounds when they become READY. Funded groups retain their complete invoice set throughout this process.
 
-Use **Test netting with more agents** in Clearing to prepare 3–12 testnet accounts and create signed public or private groups. Rounds support up to **12 participants**, **48 public invoices** or **six private invoices**. An agent can owe ten counterparties in one public round; the invoice limit applies to the entire group. See the [architecture guide](docs/architecture.md) for the test scenarios.
-
 ## Owner and agent authority
 
 Owners register accounts, deposit tokens, manage permissions and withdraw available funds. Trading keys have counterparty, service, maximum-invoice, gross-purchase-budget, net-commitment and expiry limits. Netting does not bypass the gross purchase allowance.
