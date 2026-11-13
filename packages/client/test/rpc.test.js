@@ -9,6 +9,21 @@ function clock(t){
  return{waits,advance:milliseconds=>{now+=milliseconds;}};
 }
 function connection(url,sendJsonRpc){return{connection:{url},sendJsonRpc};}
+test('a missing transaction on one RPC is reconciled through another provider',async()=>{
+ const provider=new V4RpcProvider(['https://missing-receipt.example','https://final-receipt.example']),calls=[];
+ provider.connections=[connection('https://missing-receipt.example',async(method,params)=>{calls.push({method,params});throw new Error('UnknownTransaction');}),connection('https://final-receipt.example',async(method,params)=>{calls.push({method,params});return{final_execution_status:'FINAL',status:{SuccessValue:'bnVsbA=='}};})];
+ const params={tx_hash:'original-hash',sender_account_id:'owner.testnet',wait_until:'NONE'};
+ const result=await provider.sendJsonRpc('tx',params);
+ assert.equal(result.final_execution_status,'FINAL');assert.equal(calls.length,2);assert.equal(calls[0].params,params);assert.equal(calls[1].params,params);
+});
+test('a stalled RPC is bounded and fails over without changing signed bytes',async t=>{
+ const controllers=[];
+ t.mock.method(AbortSignal,'timeout',milliseconds=>{assert.equal(milliseconds,12000);const controller=new AbortController();controllers.push(controller);return controller.signal;});
+ const provider=new V4RpcProvider(['https://stalled-request.example','https://responsive-request.example']);
+ provider.connections=[connection('https://stalled-request.example',()=>{queueMicrotask(()=>controllers[0].abort());return new Promise(()=>{});}),connection('https://responsive-request.example',async(method,params)=>({method,params}))];
+ const params={signed_tx_base64:'unchanged-signed-bytes',wait_until:'FINAL'};
+ const result=await provider.sendJsonRpc('send_tx',params);assert.equal(result.params,params);assert.equal(controllers.length,2);
+});
 test('RPC failover preserves transaction bytes and does not retry contract failures',async()=>{
  const provider=new V4RpcProvider(['https://first.example','https://second.example']),calls=[];
  provider.connections=[{connection:{url:'https://first.example'},sendJsonRpc:async(method,params)=>{calls.push({method,params});throw Object.assign(new Error('rate limit'),{cause:429});}},{connection:{url:'https://second.example'},sendJsonRpc:async(method,params)=>{calls.push({method,params});return{status:{SuccessValue:''}};}}];

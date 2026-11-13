@@ -5,6 +5,19 @@ export class V4MemoryJournal {
     operations = new Map();
     async get(id) { return this.operations.get(id); }
     async put(op) { this.operations.set(op.id, structuredClone(op)); }
+    async latestSignerOperation(accountId, publicKey) {
+        let latest;
+        for (const op of this.operations.values()) {
+            if (op.signer_id !== accountId)
+                continue;
+            const info = v4OperationSigner(op);
+            if (!info || info.public_key !== publicKey)
+                continue;
+            if (!latest || info.nonce >= v4OperationSigner(latest).nonce)
+                latest = op;
+        }
+        return latest;
+    }
 }
 export const V4_MAX_AMOUNT = (1n << 100n) - 1n;
 export const V4_MAX_PRIVATE_INVOICES = 6;
@@ -280,6 +293,17 @@ export function v4UnknownTransaction(error) {
 }
 const rpcCooldowns = new Map();
 const rpcRetryWaitMs = 2000;
+async function boundedRpcRequest(request) {
+    const signal = AbortSignal.timeout(12_000);
+    let expired;
+    const timeout = new Promise((_, reject) => { expired = () => reject(new Error('RPC request timed out')); signal.addEventListener('abort', expired, { once: true }); });
+    try {
+        return await Promise.race([request(), timeout]);
+    }
+    finally {
+        signal.removeEventListener('abort', expired);
+    }
+}
 /** Retry transport failures with the same RPC payload. Contract errors are final. */
 export class V4RpcProvider extends JsonRpcProvider {
     connections;
@@ -295,6 +319,7 @@ export class V4RpcProvider extends JsonRpcProvider {
     sendJsonRpc = async (method, params) => {
         for (let cycle = 0; cycle < 2; cycle++) {
             let earliest = Infinity;
+            let missingTransaction;
             for (const provider of this.connections) {
                 const endpoint = provider.connection.url, blocked = rpcCooldowns.get(endpoint) ?? 0;
                 if (blocked > Date.now()) {
@@ -302,13 +327,19 @@ export class V4RpcProvider extends JsonRpcProvider {
                     continue;
                 }
                 try {
-                    return await provider.sendJsonRpc(method, params);
+                    return await boundedRpcRequest(() => provider.sendJsonRpc(method, params));
                 }
                 catch (error) {
+                    if (method === 'tx' && v4UnknownTransaction(error)) {
+                        // A lagging RPC can report a transaction missing while another
+                        // provider already has its final receipt. Check every endpoint.
+                        missingTransaction = error;
+                        continue;
+                    }
                     if (error instanceof RpcError)
                         throw error;
                     const e = error;
-                    if (![408, 429, 500, 502, 503, 504].includes(e.cause ?? 0) && !/fetch failed|Failed to fetch|FetchError|timeout/i.test(e.message))
+                    if (![408, 429, 500, 502, 503, 504].includes(e.cause ?? 0) && !/fetch failed|Failed to fetch|FetchError|timeout|timed out/i.test(e.message))
                         throw error;
                     const seconds = Number(e.message.match(/retry after (\d+) seconds/i)?.[1] ?? (e.cause === 429 ? 30 : 2));
                     // Preserve provider backoff, including long rate limits and a longer
@@ -319,6 +350,8 @@ export class V4RpcProvider extends JsonRpcProvider {
                     earliest = Math.min(earliest, until);
                 }
             }
+            if (missingTransaction)
+                throw missingTransaction;
             const wait = Math.max(0, earliest - Date.now());
             // The durable caller can retry later. Waiting past this short budget
             // would still leave every endpoint blocked and delay wallet progress.
@@ -333,6 +366,48 @@ export class V4RpcProvider extends JsonRpcProvider {
     };
 }
 const signerQueues = new Map();
+const signerHeads = new Map();
+/** Public journal metadata; older records are decoded without exposing keys. */
+export function v4OperationSigner(op) {
+    if (!op.signed_transaction)
+        return;
+    try {
+        const tx = SignedTransaction.decode(Buffer.from(op.signed_transaction, 'base64')).transaction;
+        return { public_key: tx.publicKey.toString(), nonce: BigInt(tx.nonce) };
+    }
+    catch {
+        return;
+    }
+}
+/** Called under withV4SignerLock; persist before permitting another nonce. */
+export async function v4SignOperation(account, journal, id, payload_hash, input, amount) {
+    const signer = account.getSigner();
+    if (!signer)
+        throw new Error('SIGNER_REQUIRED');
+    const publicKey = await signer.getPublicKey(), key = `${account.accountId}:${String(publicKey)}`;
+    const stored = await journal.latestSignerOperation?.(account.accountId, String(publicKey));
+    const remembered = signerHeads.get(key);
+    let head = remembered;
+    if (stored && (!head || v4OperationSigner(stored).nonce >= v4OperationSigner(head.operation).nonce))
+        head = { operation: stored, journal };
+    if (head) {
+        const current = await head.journal.get(head.operation.id) ?? head.operation;
+        if (['SIGNED', 'UNKNOWN'].includes(current.state))
+            throw new V4BroadcastUnknown(current.id, current.tx_hash);
+    }
+    const fresh = new Account(account.accountId, account.provider, signer);
+    const transaction = await fresh.createTransaction({ ...input, publicKey });
+    // Access-key views may lag a confirmed transaction. A fresh Account alone
+    // therefore cannot safely allocate the next nonce, even with a signer lock.
+    const previous = head ? v4OperationSigner(head.operation)?.nonce : undefined;
+    if (previous !== undefined && BigInt(transaction.nonce) <= previous)
+        transaction.nonce = previous + 1n;
+    const signed = await signer.signTransaction(transaction);
+    const operation = { id, payload_hash, signer_id: account.accountId, public_key: String(publicKey), nonce: transaction.nonce.toString(), tx_hash: baseEncode(signed.txHash), signed_transaction: Buffer.from(signed.signedTransaction.encode()).toString('base64'), state: 'SIGNED', created_at_ms: Date.now(), ...(amount !== undefined ? { amount } : {}) };
+    await journal.put(operation);
+    signerHeads.set(key, { operation, journal });
+    return operation;
+}
 export async function withV4SignerLock(account, task) {
     const signer = account.getSigner();
     if (!signer)
@@ -420,14 +495,7 @@ export class V4NearTransport {
             }
         }
         else {
-            const signer = this.account.getSigner();
-            if (!signer)
-                throw new Error("SIGNER_REQUIRED");
-            const fresh = new Account(this.account_id, this.provider, signer);
-            const transaction = await fresh.createTransaction({ receiverId: contract, actions: [actions.functionCall(method, args, options.gas ?? 120000000000000n, options.deposit ?? 0n)], publicKey: await signer.getPublicKey() });
-            const signed = await signer.signTransaction(transaction);
-            op = { id: options.operation_id, payload_hash, signer_id: this.account_id, tx_hash: baseEncode(signed.txHash), signed_transaction: Buffer.from(signed.signedTransaction.encode()).toString("base64"), state: "SIGNED", created_at_ms: Date.now(), ...(typeof (args.amount ?? args.expected_available) === 'string' ? { amount: String(args.amount ?? args.expected_available) } : {}) };
-            await this.journal.put(op); // Durable before any broadcast.
+            op = await v4SignOperation(this.account, this.journal, options.operation_id, payload_hash, { receiverId: contract, actions: [actions.functionCall(method, args, options.gas ?? 120000000000000n, options.deposit ?? 0n)] }, typeof (args.amount ?? args.expected_available) === 'string' ? String(args.amount ?? args.expected_available) : undefined);
         }
         try {
             const response = await this.provider.sendTransactionUntil(SignedTransaction.decode(Buffer.from(op.signed_transaction, "base64")), "FINAL");

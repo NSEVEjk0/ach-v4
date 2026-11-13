@@ -7,12 +7,12 @@ Cross-chain quotes, owner-controlled funding and payouts using NEAR Intents.
 Download both packages from the [developer page](https://ach-rosy.vercel.app/developers):
 
 ```sh
-npm install ./ach-client-4.0.1.tgz ./ach-intents-4.1.0.tgz
+npm install ./ach-client-4.0.2.tgz ./ach-intents-4.1.0.tgz
 ```
 
 The client is a peer dependency. These packages are distributed as tarballs and are not published to npm.
 
-Version 4.1.0 expands catalogue asset validation to NEP-245 and Chain Signatures identities while retaining the compatible `^4.0.0` client peer range. The current client download is 4.0.1. The earlier 4.0.0 archives remain available for existing integrations.
+Version 4.1.0 expands catalogue asset validation to NEP-245 and Chain Signatures identities while retaining the compatible `^4.0.0` client peer range. The current client download is 4.0.2. The earlier 4.0.0 archives remain available for existing integrations.
 
 `OneClickIntents` provides token discovery, quotes and route status. `OwnerIntentsRouter` from `@ach/intents/owner` uses an owner client connected to a separately configured mainnet vault.
 

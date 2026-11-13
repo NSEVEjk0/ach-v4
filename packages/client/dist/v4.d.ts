@@ -223,17 +223,22 @@ export interface V4Operation {
     state: "SIGNED" | "UNKNOWN" | "CONFIRMED" | "FAILED";
     created_at_ms?: number;
     amount?: V4Units;
+    public_key?: string;
+    nonce?: string;
     result?: V4Confirmed<unknown>;
     error?: string;
 }
 export interface V4Journal {
     get(id: string): Promise<V4Operation | undefined>;
     put(operation: V4Operation): Promise<void>;
+    /** Retain the highest signed nonce across process restarts. */
+    latestSignerOperation?(accountId: string, publicKey: string): Promise<V4Operation | undefined>;
 }
 export declare class V4MemoryJournal implements V4Journal {
     private readonly operations;
     get(id: string): Promise<V4Operation | undefined>;
     put(op: V4Operation): Promise<void>;
+    latestSignerOperation(accountId: string, publicKey: string): Promise<V4Operation | undefined>;
 }
 export declare const V4_MAX_AMOUNT: bigint;
 export declare const V4_MAX_PRIVATE_INVOICES = 6;
@@ -278,6 +283,13 @@ export declare class V4RpcProvider extends JsonRpcProvider {
     constructor(urls: string | readonly string[]);
     sendJsonRpc: JsonRpcProvider['sendJsonRpc'];
 }
+/** Public journal metadata; older records are decoded without exposing keys. */
+export declare function v4OperationSigner(op: V4Operation): {
+    public_key: string;
+    nonce: bigint;
+} | undefined;
+/** Called under withV4SignerLock; persist before permitting another nonce. */
+export declare function v4SignOperation(account: Account, journal: V4Journal, id: string, payload_hash: string, input: Omit<Parameters<Account['createTransaction']>[0], 'publicKey'>, amount?: V4Units): Promise<V4Operation>;
 export declare function withV4SignerLock<T>(account: Account, task: () => Promise<T>): Promise<T>;
 export declare class V4NearTransport implements V4Transport {
     readonly account_id: string;

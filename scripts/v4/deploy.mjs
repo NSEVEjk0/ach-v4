@@ -1,8 +1,8 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
 import path from 'node:path';
-import { Account, JsonRpcProvider, KeyPair, SignedTransaction, actions, baseEncode } from '../../packages/client/dist/near.js';
-import { AchV4Client, V4NearTransport } from '../../packages/client/dist/v4.js';
+import { Account, KeyPair, SignedTransaction, actions, baseEncode } from '../../packages/client/dist/near.js';
+import { AchV4Client, V4NearTransport, V4RpcProvider } from '../../packages/client/dist/v4.js';
 import { StateStore } from '../../services/lib/store.mjs';
 import { durableActions } from '../../services/lib/transactions.mjs';
 import {privateRoot,manifestPath,outlayerPath} from '../../services/lib/paths.mjs';
@@ -24,7 +24,8 @@ if(previousManifest)requireServiceLayout(previousManifest);
 const contextIndex=process.argv.indexOf('--git-context');
 const gitContext=contextIndex<0?undefined:json(process.argv[contextIndex+1]);
 const verifiedSource=sourceFingerprint(gitContext);
-const provider = new JsonRpcProvider({ url: accounts.rpc_url });
+const rpcUrls=accounts.rpc_urls??previousManifest?.rpc_urls??[accounts.rpc_url];
+const provider = new V4RpcProvider(rpcUrls);
 const journal = new StateStore(path.join(privateRoot, 'deployment.sqlite'));
 const evidence = [];
 let coordinator;
@@ -67,7 +68,7 @@ async function deploy(role) {
   const chain = await provider.viewAccount({ accountId: identity.account_id, blockQuery: { finality: 'final' } });
   const codeHash = baseEncode(createHash('sha256').update(bytes).digest());
   if (chain.code_hash !== codeHash) throw new Error('DEPLOYED_CODE_HASH_MISMATCH');
-  return { identity, account, code_hash: codeHash, transport: new V4NearTransport(identity.account_id, accounts.rpc_url, identity.secret_key, journal) };
+  return { identity, account, code_hash: codeHash, transport: new V4NearTransport(identity.account_id, rpcUrls, identity.secret_key, journal) };
 }
 try {
   // Check before any funding, account creation or code replacement. Never
@@ -107,13 +108,13 @@ try {
   }
   const tokenReserve = await durableActions(token.transport.account, journal, reserveId, accounts.vault, [actions.transfer(6_000_000_000_000_000_000_000_000n)]);
   evidence.push({ kind: 'native-storage-sponsorship', ...tokenReserve });
-  const config = { protocol_version: 4, workflow_revision:2, network: 'testnet', root:accounts.root, vault: accounts.vault, token: accounts.token, decimals: 6, rpc_url: accounts.rpc_url, code_hash: vault.code_hash };
-  const coordinatorOwner = new AchV4Client(config, new V4NearTransport(owner.account_id, accounts.rpc_url, owner.secret_key, journal), 'owner');
+  const config = { protocol_version: 4, workflow_revision:2, network: 'testnet', root:accounts.root, vault: accounts.vault, token: accounts.token, decimals: 6, rpc_url: rpcUrls[0], rpc_urls:rpcUrls, code_hash: vault.code_hash };
+  const coordinatorOwner = new AchV4Client(config, new V4NearTransport(owner.account_id, rpcUrls, owner.secret_key, journal), 'owner');
   await coordinatorOwner.register('Clearing coordinator');
   const coordinatorPolicy=(await coordinatorOwner.balance()).policy;
   if(!coordinatorPolicy)await coordinatorOwner.setPolicy({ key: Buffer.from(KeyPair.fromString(coordinator.secret_key).getPublicKey().data).toString('hex'), max_invoice: '100000', gross_budget: '0', max_net_commitment: '0', expires_at_ms: Date.now() + 29 * 86_400_000, counterparties: [], services: [] }, 'coordinator-policy');
   else if(coordinatorPolicy.key!==Buffer.from(KeyPair.fromString(coordinator.secret_key).getPublicKey().data).toString('hex')||coordinatorPolicy.gross_budget!=='0'||coordinatorPolicy.max_net_commitment!=='0'||coordinatorPolicy.revoked)throw new Error('COORDINATOR_POLICY_MISMATCH');
-  const rootTransport = new V4NearTransport(accounts.root, accounts.rpc_url, rootIdentity.secret_key, journal);
+  const rootTransport = new V4NearTransport(accounts.root, rpcUrls, rootIdentity.secret_key, journal);
   await rootTransport.call(accounts.token, 'storage_deposit', { account_id: accounts.vault }, { operation_id: 'register-vault-token', deposit: 0n });
   const onchainConfig = await vault.transport.view(accounts.vault, 'get_config', {});
   if (onchainConfig.token !== config.token || onchainConfig.protocol_version !== 4 || onchainConfig.workflow_revision!==2 || onchainConfig.coordinator_id !== coordinator.account_id) throw new Error('ONCHAIN_CONFIGURATION_MISMATCH');

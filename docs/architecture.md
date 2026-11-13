@@ -61,9 +61,13 @@ The Clearing page can create fresh workspaces with 3–12 distinct testnet accou
 
 Public tests form a payment cycle: the first bill is 0.100 tUSDC and each remaining bill is 0.080. Twelve agents therefore clear 0.980 tUSDC of bills with a 0.020 tUSDC net settlement. Private tests use the same cycle for up to six agents. Seven–12 agents use six bills across separate payment paths; at twelve agents there are six pairs, no offsetting payments and a 0.500 tUSDC settlement.
 
-Research starts with 1 tUSDC; Visual and Audit start with zero. Each extra test wallet receives 1 tUSDC. Sponsored sessions expire after 24 hours and allow twelve synthetic netting requests and 48 Intents previews, within spending and sponsorship limits. Creating another workspace remains subject to the deployment's sponsor budget and rate limits.
+The default three-service workspace starts Research with 1 tUSDC and Visual and Audit with zero. New larger judge workspaces fund **every wallet with 5 tUSDC**, including Visual and Audit, so different agents can take payment roles. New trading policies allow 100 tUSDC of gross purchases; only net debtors reserve settlement funds. Sessions allow twelve synthetic netting requests and 48 Intents previews, within contract, spending and sponsorship limits.
 
-Fresh wallet provisioning batches compatible actions and installs policies with distinct owner signers in parallel. This reduces the default three-wallet flow to approximately eleven transactions when private computation funding is enabled. Chain confirmations and sponsor queues still affect elapsed time; this transaction count is not a measured speed result.
+A configured pool prepares fresh three- and twelve-wallet workspaces before a visitor arrives. Claiming a ready workspace requires no new chain transactions, assigns it once, rotates its unused session token and preserves its existing policy expiry. Twelve-wallet workspaces can serve any requested test count, which the UI retains. Preparation and replenishment use the deployment's sponsor budget; a depleted pool uses normal provisioning.
+
+Cold wallet provisioning batches compatible actions and installs policies with distinct owner signers in parallel. The default three-wallet flow uses approximately eleven transactions when private computation funding is enabled. Larger workspaces separate token registration and minting to retain transaction gas headroom. Wallet policies expire 24 hours after preparation; the workspace displays the remaining lifetime.
+
+Public groups can contain multiple orders per agent, up to 48 invoices across 12 participants. The six-invoice private limit applies to the complete private group, rather than each agent.
 
 ## Cross-chain routes
 

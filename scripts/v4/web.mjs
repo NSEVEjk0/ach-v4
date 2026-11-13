@@ -59,7 +59,7 @@ async function verifyHosted(url,protectedPreview=false){
   const actual=JSON.parse(res.stdout);assert.equal(actual.vault,config.vault);assert.equal(actual.code_hash,config.code_hash);return;
  }
  assert.ok(r.ok,'HOSTED_RUNTIME_UNAVAILABLE');const actual=await r.json();assert.equal(actual.vault,config.vault);assert.equal(actual.token,config.token);assert.equal(actual.network,config.network);assert.equal(actual.code_hash,config.code_hash);
- for(const page of ['/','/workspace','/developers','/proof','/sdk/ach-client-4.0.1.tgz','/sdk/ach-client-4.0.0.tgz','/sdk/ach-intents-4.1.0.tgz','/sdk/ach-intents-4.0.0.tgz']){r=await fetch(new URL(page,url),{signal:AbortSignal.timeout(60000)});assert.ok(r.ok,'HOSTED_PAGE_UNAVAILABLE:'+page);}
+ for(const page of ['/','/workspace','/developers','/proof','/sdk/ach-client-4.0.2.tgz','/sdk/ach-client-4.0.0.tgz','/sdk/ach-intents-4.1.0.tgz','/sdk/ach-intents-4.0.0.tgz']){r=await fetch(new URL(page,url),{signal:AbortSignal.timeout(60000)});assert.ok(r.ok,'HOSTED_PAGE_UNAVAILABLE:'+page);}
 }
 async function browser(url,smoke=true){
  const args=['scripts/v4/browser.mjs','--url',url,'--reuse-live',...(smoke?['--smoke']:[])];

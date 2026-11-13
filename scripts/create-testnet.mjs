@@ -3,7 +3,7 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { Account, KeyPair, JsonRpcProvider, actions } from '../packages/client/dist/near.js';
+import { Account, KeyPair, actions } from '../packages/client/dist/near.js';
 import { V4RpcProvider } from '../packages/client/dist/v4.js';
 import { StateStore } from '../services/lib/store.mjs';
 import { durableActions } from '../services/lib/transactions.mjs';
@@ -14,6 +14,9 @@ const directory = privateRoot;
 mkdirSync(directory, { recursive: true, mode: 0o700 });
 if(process.argv.includes('--refill-sponsor')||process.argv.includes('--refill-vault-storage')){
   const storageRefill=process.argv.includes('--refill-vault-storage'),prefix=storageRefill?'vault-storage-refill':'sponsor-refill',count=storageRefill?2:3;
+  const batchFlag=process.argv.indexOf('--refill-batch'),batchText=batchFlag<0?'0':process.argv[batchFlag+1];
+  if(!/^(0|[1-9]\d{0,2})$/.test(batchText??'')||Number(batchText)>100)throw new Error('INVALID_REFILL_BATCH');
+  const batch=Number(batchText);
   const config=JSON.parse(readFileSync(manifestPath,'utf8')),root=JSON.parse(readFileSync(privatePath('root.json'),'utf8'));
   requireFreshAccounts(config);
   if(config.network!=='testnet'||config.token_has_monetary_value!==false||config.status!=='deployed'||root.role!=='sponsor'||!root.account_id.endsWith('.testnet'))throw new Error('TESTNET_SPONSOR_REFILL_ONLY');
@@ -22,7 +25,8 @@ if(process.argv.includes('--refill-sponsor')||process.argv.includes('--refill-va
   const provider=new V4RpcProvider(config.rpc_urls??config.rpc_url),day=new Date().toISOString().slice(0,10).replaceAll('-',''),suffix=root.account_id.match(/([a-f\d]{8})\.testnet$/)?.[1];
   if(!suffix)throw new Error('SPONSOR_NAMESPACE_REQUIRED');
   const journal=new StateStore(privatePath(prefix+'.sqlite'));
-  try{for(let index=0;index<count;index++){
+  try{for(let offset=0;offset<count;offset++){
+    const index=batch*count+offset;
     const account_id=`ach-${storageRefill?'storage':'native'}-${day}-${index}-${suffix}.testnet`,filename=privatePath(`${prefix}-${day}-${index}.json`);
     let identity;
     if(existsSync(filename))identity=JSON.parse(readFileSync(filename,'utf8'));
@@ -42,18 +46,18 @@ if(process.argv.includes('--refill-sponsor')||process.argv.includes('--refill-va
     const result=await durableActions(new Account(account_id,provider,identity.secret_key),journal,'refill:'+account_id,recipient,[actions.transfer(9_500_000_000_000_000_000_000_000n)]);
     console.log(JSON.stringify({phase:'testnet-'+prefix,index:index+1,native_units:'9500000000000000000000000',tx_hash:result.tx_hash,visitor_charge:false}));
   }}finally{journal.close();}
-  console.log(JSON.stringify({[prefix]:'passed',daily_native_cap:(BigInt(count)*9_500_000_000_000_000_000_000_000n).toString(),recipient,customer_tokens_used:false}));process.exit(0);
+  console.log(JSON.stringify({[prefix]:'passed',batch,batch_native_allocation:(BigInt(count)*9_500_000_000_000_000_000_000_000n).toString(),recipient,customer_tokens_used:false}));process.exit(0);
 }
 const planFile = path.join(directory, 'accounts.json');
 let plan;
 if (existsSync(planFile)) plan = JSON.parse(readFileSync(planFile, 'utf8'));
 else {
   const suffix = randomBytes(4).toString('hex');
-  plan = { network: 'testnet', workflow_revision:2, rpc_url: 'https://test.rpc.fastnear.com', root: `ach-v4r2-demo-${suffix}.testnet`, vault: `ach-vault-v4r2-${suffix}.testnet`, token: `ach-usdc-v4r2-${suffix}.testnet` };
+  plan = { network: 'testnet', workflow_revision:2, rpc_url: 'https://test.rpc.fastnear.com', rpc_urls:['https://test.rpc.fastnear.com','https://near-testnet.drpc.org'], root: `ach-v4r2-demo-${suffix}.testnet`, vault: `ach-vault-v4r2-${suffix}.testnet`, token: `ach-usdc-v4r2-${suffix}.testnet` };
   writeFileSync(planFile, JSON.stringify(plan, null, 2), { mode: 0o600, flag: 'wx' });
 }
 requireFreshAccounts(plan);
-const provider = new JsonRpcProvider({ url: plan.rpc_url });
+const provider = new V4RpcProvider(plan.rpc_urls??plan.rpc_url);
 for (const role of ['root', 'vault', 'token']) {
   const filename = path.join(directory, `${role}.json`);
   let identity;

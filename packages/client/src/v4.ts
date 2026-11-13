@@ -70,14 +70,28 @@ export interface V4Transport {
 export interface V4Operation {
   id: string; payload_hash: string; signer_id: string; tx_hash: string;
   signed_transaction: string; state: "SIGNED" | "UNKNOWN" | "CONFIRMED" | "FAILED";
-  created_at_ms?:number;amount?:V4Units;
+  created_at_ms?:number;amount?:V4Units;public_key?:string;nonce?:string;
   result?: V4Confirmed<unknown>; error?: string;
 }
-export interface V4Journal { get(id: string): Promise<V4Operation | undefined>; put(operation: V4Operation): Promise<void> }
+export interface V4Journal {
+  get(id: string): Promise<V4Operation | undefined>;
+  put(operation: V4Operation): Promise<void>;
+  /** Retain the highest signed nonce across process restarts. */
+  latestSignerOperation?(accountId:string,publicKey:string):Promise<V4Operation|undefined>;
+}
 export class V4MemoryJournal implements V4Journal {
   private readonly operations = new Map<string, V4Operation>();
   async get(id: string) { return this.operations.get(id); }
   async put(op: V4Operation) { this.operations.set(op.id, structuredClone(op)); }
+  async latestSignerOperation(accountId:string,publicKey:string) {
+    let latest:V4Operation|undefined;
+    for(const op of this.operations.values()){
+      if(op.signer_id!==accountId)continue;
+      const info=v4OperationSigner(op);if(!info||info.public_key!==publicKey)continue;
+      if(!latest||info.nonce>=v4OperationSigner(latest)!.nonce)latest=op;
+    }
+    return latest;
+  }
 }
 
 export const V4_MAX_AMOUNT = (1n << 100n) - 1n;
@@ -234,6 +248,13 @@ export function v4UnknownTransaction(error: unknown): boolean {
 }
 const rpcCooldowns = new Map<string,number>();
 const rpcRetryWaitMs = 2000;
+async function boundedRpcRequest<T>(request:()=>Promise<T>):Promise<T>{
+  const signal=AbortSignal.timeout(12_000);
+  let expired!:()=>void;
+  const timeout=new Promise<never>((_,reject)=>{expired=()=>reject(new Error('RPC request timed out'));signal.addEventListener('abort',expired,{once:true});});
+  try{return await Promise.race([request(),timeout]);}
+  finally{signal.removeEventListener('abort',expired);}
+}
 /** Retry transport failures with the same RPC payload. Contract errors are final. */
 export class V4RpcProvider extends JsonRpcProvider {
   private connections: JsonRpcProvider[];
@@ -245,15 +266,20 @@ export class V4RpcProvider extends JsonRpcProvider {
   }
   override sendJsonRpc:JsonRpcProvider['sendJsonRpc']=async(method,params)=>{
     for(let cycle=0;cycle<2;cycle++){
-      let earliest=Infinity;
+      let earliest=Infinity;let missingTransaction:unknown;
       for(const provider of this.connections){
         const endpoint=provider.connection.url,blocked=rpcCooldowns.get(endpoint)??0;
         if(blocked>Date.now()){earliest=Math.min(earliest,blocked);continue;}
-        try{return await provider.sendJsonRpc(method,params);}
+        try{return await boundedRpcRequest(()=>provider.sendJsonRpc(method,params));}
         catch(error){
+          if(method==='tx'&&v4UnknownTransaction(error)){
+            // A lagging RPC can report a transaction missing while another
+            // provider already has its final receipt. Check every endpoint.
+            missingTransaction=error;continue;
+          }
           if(error instanceof RpcError)throw error;
           const e=error as Error&{cause?:number};
-          if(![408,429,500,502,503,504].includes(e.cause??0)&&!/fetch failed|Failed to fetch|FetchError|timeout/i.test(e.message))throw error;
+          if(![408,429,500,502,503,504].includes(e.cause??0)&&!/fetch failed|Failed to fetch|FetchError|timeout|timed out/i.test(e.message))throw error;
           const seconds=Number(e.message.match(/retry after (\d+) seconds/i)?.[1]??(e.cause===429?30:2));
           // Preserve provider backoff, including long rate limits and a longer
           // cooldown reported by another in-flight request to the same RPC.
@@ -261,6 +287,7 @@ export class V4RpcProvider extends JsonRpcProvider {
           const until=Math.max(rpcCooldowns.get(endpoint)??0,Date.now()+delay);rpcCooldowns.set(endpoint,until);earliest=Math.min(earliest,until);
         }
       }
+      if(missingTransaction)throw missingTransaction;
       const wait=Math.max(0,earliest-Date.now());
       // The durable caller can retry later. Waiting past this short budget
       // would still leave every endpoint blocked and delay wallet progress.
@@ -271,6 +298,39 @@ export class V4RpcProvider extends JsonRpcProvider {
   };
 }
 const signerQueues=new Map<string,Promise<void>>();
+const signerHeads=new Map<string,{operation:V4Operation;journal:V4Journal}>();
+/** Public journal metadata; older records are decoded without exposing keys. */
+export function v4OperationSigner(op:V4Operation):{public_key:string;nonce:bigint}|undefined {
+  if(!op.signed_transaction)return;
+  try{
+    const tx=SignedTransaction.decode(Buffer.from(op.signed_transaction,'base64')).transaction;
+    return{public_key:tx.publicKey.toString(),nonce:BigInt(tx.nonce)};
+  }catch{return;}
+}
+/** Called under withV4SignerLock; persist before permitting another nonce. */
+export async function v4SignOperation(account:Account,journal:V4Journal,id:string,payload_hash:string,input:Omit<Parameters<Account['createTransaction']>[0],'publicKey'>,amount?:V4Units):Promise<V4Operation>{
+  const signer=account.getSigner();if(!signer)throw new Error('SIGNER_REQUIRED');
+  const publicKey=await signer.getPublicKey(),key=`${account.accountId}:${String(publicKey)}`;
+  const stored=await journal.latestSignerOperation?.(account.accountId,String(publicKey));
+  const remembered=signerHeads.get(key);
+  let head=remembered;
+  if(stored&&(!head||v4OperationSigner(stored)!.nonce>=v4OperationSigner(head.operation)!.nonce))head={operation:stored,journal};
+  if(head){
+    const current=await head.journal.get(head.operation.id)??head.operation;
+    if(['SIGNED','UNKNOWN'].includes(current.state))throw new V4BroadcastUnknown(current.id,current.tx_hash);
+  }
+  const fresh=new Account(account.accountId,account.provider,signer);
+  const transaction=await fresh.createTransaction({...input,publicKey});
+  // Access-key views may lag a confirmed transaction. A fresh Account alone
+  // therefore cannot safely allocate the next nonce, even with a signer lock.
+  const previous=head?v4OperationSigner(head.operation)?.nonce:undefined;
+  if(previous!==undefined&&BigInt(transaction.nonce)<=previous)transaction.nonce=previous+1n;
+  const signed=await signer.signTransaction(transaction);
+  const operation:V4Operation={id,payload_hash,signer_id:account.accountId,public_key:String(publicKey),nonce:transaction.nonce.toString(),tx_hash:baseEncode(signed.txHash),signed_transaction:Buffer.from(signed.signedTransaction.encode()).toString('base64'),state:'SIGNED',created_at_ms:Date.now(),...(amount!==undefined?{amount}:{})};
+  await journal.put(operation);
+  signerHeads.set(key,{operation,journal});
+  return operation;
+}
 export async function withV4SignerLock<T>(account:Account, task:()=>Promise<T>):Promise<T> {
   const signer=account.getSigner();if(!signer)throw new Error("SIGNER_REQUIRED");
   const key=`${account.accountId}:${String(await signer.getPublicKey())}`;
@@ -323,12 +383,7 @@ export class V4NearTransport implements V4Transport {
         catch (e) { if ((await this.journal.get(existing.id))?.state === "FAILED") throw e; throw new V4BroadcastUnknown(existing.id, existing.tx_hash); }
       }
     } else {
-      const signer = this.account.getSigner(); if (!signer) throw new Error("SIGNER_REQUIRED");
-      const fresh = new Account(this.account_id,this.provider,signer);
-      const transaction = await fresh.createTransaction({ receiverId: contract, actions: [actions.functionCall(method, args, options.gas ?? 120_000_000_000_000n, options.deposit ?? 0n)], publicKey: await signer.getPublicKey() });
-      const signed = await signer.signTransaction(transaction);
-      op = { id: options.operation_id, payload_hash, signer_id: this.account_id, tx_hash: baseEncode(signed.txHash), signed_transaction: Buffer.from(signed.signedTransaction.encode()).toString("base64"), state: "SIGNED",created_at_ms:Date.now(),...(typeof(args.amount??args.expected_available)==='string'?{amount:String(args.amount??args.expected_available)}:{}) };
-      await this.journal.put(op); // Durable before any broadcast.
+      op=await v4SignOperation(this.account,this.journal,options.operation_id,payload_hash,{receiverId:contract,actions:[actions.functionCall(method,args,options.gas??120_000_000_000_000n,options.deposit??0n)]},typeof(args.amount??args.expected_available)==='string'?String(args.amount??args.expected_available):undefined);
     }
     try { const response = await this.provider.sendTransactionUntil(SignedTransaction.decode(Buffer.from(op.signed_transaction, "base64")), "FINAL"); return await this.confirm<T>(op, response); }
     catch (error) {

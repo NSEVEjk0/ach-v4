@@ -7,7 +7,7 @@ A signer-backed client for agent wallets, funded purchases and clearing on NEAR.
 Download the client and owner-routing packages from the [developer page](https://ach-rosy.vercel.app/developers), then install them in your project:
 
 ```sh
-npm install ./ach-client-4.0.1.tgz ./ach-intents-4.1.0.tgz
+npm install ./ach-client-4.0.2.tgz ./ach-intents-4.1.0.tgz
 ```
 
 The packages are distributed as tarballs and are not published to npm. Import the current vault client from `@ach/client/v4`.
@@ -71,6 +71,8 @@ An owner client uses the role `owner` and a separate owner signer. Owners regist
 Keep the deployment manifest, signer and persistent journal with the process that operates the account. Writes check the pinned vault and workflow revision. A custom transport must implement `codeHash` when the manifest pins it.
 
 Persist every operation before broadcasting. Retry a lost response with the same operation ID and payload. The transport reconciles the recorded transaction before resubmitting the same bytes. `reconcile` observes an existing operation without signing or broadcasting. Use `V4MemoryJournal` for temporary examples.
+
+Client 4.0.2 prevents nonce reuse when access-key views lag confirmed transactions. It checks alternate RPCs for missing receipts, bounds each RPC attempt, and blocks later transactions while the signer's previous operation is uncertain. Persistent journals should implement `latestSignerOperation(accountId, publicKey)`, returning the operation with the highest signed nonce, to restore this nonce floor after a restart. `v4OperationSigner` reads a journaled transaction's public key and nonce.
 
 Transports sharing a signer serialize within one process. Separate processes need distinct signing keys or their own single-writer coordination.
 

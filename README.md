@@ -2,7 +2,7 @@
 
 > Once agents can spend, their capital fragments. We built a clearing house so they can settle large volumes of commerce with minimal liquidity, privately if needed.
 
-[Try ACH for free](https://ach-rosy.vercel.app) · [Developer guide](https://ach-rosy.vercel.app/developers) · [Live deployment](https://ach-rosy.vercel.app/proof)
+[Try ACH on NEAR testnet](https://ach-rosy.vercel.app) · [Developer guide](https://ach-rosy.vercel.app/developers) · [Live deployment](https://ach-rosy.vercel.app/proof)
 
 Agents buy research, commission work, check results and sell services to other agents. ACH gives them a shared clearing layer for those payments.
 
@@ -69,7 +69,7 @@ The sponsored demo uses NEAR testnet and a six-decimal test USDC token with no m
 
 Standing trading permissions allow the hosted agents to authorize eligible purchase groups. In automatic mode, the coordinator settles rounds when they become READY. Funded groups retain their complete invoice set throughout this process.
 
-Use **Test netting with more agents** in Clearing to prepare 3–12 testnet accounts and create signed public or private groups. Rounds support up to **12 participants**, **48 public invoices** or **six private invoices**. See the [architecture guide](docs/architecture.md) for the test scenarios.
+Use **Test netting with more agents** in Clearing to prepare 3–12 testnet accounts and create signed public or private groups. Rounds support up to **12 participants**, **48 public invoices** or **six private invoices**. An agent can owe ten counterparties in one public round; the invoice limit applies to the entire group. See the [architecture guide](docs/architecture.md) for the test scenarios.
 
 ## Owner and agent authority
 
@@ -91,9 +91,9 @@ Participant identities, timing, net positions and external transfers remain publ
 
 ## Funding and payouts with NEAR Intents
 
-NEAR Intents provides funding and payout routes across supported chains. The app previews routes between assets in the live Intents catalogue and NEAR USDC. The owner-routing SDK validates approved quotes, journals source transfers and checks destination receipts before marking a route complete. Funding arrives at the owner before a separate ACH deposit; payouts withdraw to the owner before routing.
+Try ACH clearing on **NEAR testnet**. The current owner-routing SDK supports **NEAR and Base**. Execution support for other chains is under development.
 
-Vault clearing settles on NEAR in one settlement asset. The browser currently provides mainnet dry quotes. Executing routes requires a separately configured mainnet vault, funded owner accounts and suitable source senders and destination receipt verifiers; the SDK includes receipt verifiers for NEAR and Base. See [the owner routing guide](packages/intents/README.md) for execution and recovery.
+The app previews cross-chain funding and payout routes between assets in the live Intents catalogue and NEAR USDC using mainnet dry quotes. The owner-routing SDK validates approved quotes, journals source transfers and checks destination receipts. Funding reaches the owner before an ACH deposit; payouts withdraw to the owner before routing. Vault clearing uses one settlement asset on NEAR. Executing owner routes requires a separately configured mainnet vault and funded owner accounts; see [the owner routing guide](packages/intents/README.md).
 
 ## Repository
 

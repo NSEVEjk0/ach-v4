@@ -30,7 +30,7 @@ async function batchedSponsorFixture(count,{losePolicyResponse=false}={}){
  sponsor.executeActions=async(account,id,receiver,actions)=>{
   const payload=v4Digest(JSON.stringify({receiver,actions},(_,v)=>typeof v==='bigint'?v.toString():v)),prior=await store.get(id);
   if(prior){assert.equal(prior.payload_hash,payload);assert.equal(prior.signer_id,account.accountId);return prior.result;}
-  const policy=id.startsWith('wallet-policy-v2:');if(policy){policiesInFlight++;peakPolicies=Math.max(peakPolicies,policiesInFlight);}
+  const policy=/^wallet-policy-v[23]:/.test(id);if(policy){policiesInFlight++;peakPolicies=Math.max(peakPolicies,policiesInFlight);}
   try{
    for(const action of actions){
     if(action.addKey){const permission=action.addKey.accessKey.permission,key=Buffer.from(action.addKey.publicKey.data).toString('hex');chain.addKey(receiver,key,{owner:permission.enum==='fullAccess',methods:permission.functionCall?.methodNames??[],receiver:permission.functionCall?.receiverId});}
@@ -65,12 +65,56 @@ test('batched setup waits for every independent policy result and resumes lost r
 
 test('twelve-wallet sponsorship covers its actual native allocations, funds independent judge owners, and bounds batch gas',async()=>{
  const h=await batchedSponsorFixture(12);try{
-  await h.sponsor.provision(h.session);const ready=h.store.session(h.session.id);assert.equal(ready.participants.length,12);assert.equal(h.deposits.size,10);assert.equal(ready.initial_balance,'10000000');
+  await h.sponsor.provision(h.session);const ready=h.store.session(h.session.id);assert.equal(ready.participants.length,12);assert.equal(h.deposits.size,12);assert.equal(ready.initial_balance,'60000000');
   const native=h.transactions.reduce((sum,t)=>sum+t.actions.reduce((n,a)=>n+BigInt(a.transfer?.deposit??0),0n),0n);assert.ok(native<=BigInt(ready.sponsor_native_reserved));assert.ok(BigInt(ready.sponsor_native_reserved)>2000000000000000000000000n);
   for(const t of h.transactions)assert.ok(t.actions.reduce((sum,a)=>sum+BigInt(a.functionCall?.gas??0),0n)<=300000000000000n);
-  const all=await Promise.all(ready.participants.map(p=>h.chain.invoke(h.config.vault,'get_balance',{account_id:p.account_id})));assert.equal(all.reduce((sum,r)=>sum+BigInt(r.value.balance),0n),10000000n);
+  const all=await Promise.all(ready.participants.map(p=>h.chain.invoke(h.config.vault,'get_balance',{account_id:p.account_id})));assert.equal(all.reduce((sum,r)=>sum+BigInt(r.value.balance),0n),60000000n);assert.ok(all.every(r=>r.value.available==='5000000'&&r.value.policy.gross_budget==='100000000'));
   assert.equal(new Set(ready.participants.map(p=>p.public_key)).size,12);assert.ok(ready.participants.every(p=>p.account_id.endsWith('.'+h.config.root)));
  }finally{h.cleanup();}
+});
+
+test('prepared wallets are claimed without another chain transaction or sponsor charge',async()=>{
+ const h=await batchedSponsorFixture(3);try{
+  await h.sponsor.provision(h.session);
+  const standby=h.store.session(h.session.id);standby.prepared_pool=true;h.store.updateSession(standby);
+  const before=h.transactions.length,charges=h.store.db.prepare('SELECT sessions,native_reserved FROM sponsor_days').get();
+  assert.equal(h.store.pendingSessions().length,0);
+  const opened=await h.sponsor.createSession('b'.repeat(64),undefined,{agent_count:3});
+  assert.equal(opened.session.state,'READY');assert.equal(opened.session.id,standby.id);assert.equal(opened.session.prepared_pool,undefined);assert.equal(opened.session.requested_agent_count,3);
+  assert.equal(h.transactions.length,before);assert.deepEqual(h.store.db.prepare('SELECT sessions,native_reserved FROM sponsor_days').get(),charges);
+  assert.equal(h.store.authenticate(opened.token).id,standby.id);assert.equal(h.store.pendingSessions().length,1);
+  await new Promise(resolve=>setImmediate(resolve));
+ }finally{h.cleanup();}
+});
+
+test('prepared-session claims isolate visitors, rotate unused tokens and preserve family ownership',()=>{
+ const directory=mkdtempSync(path.join(tmpdir(),'ach-prepared-sessions-')),filename=path.join(directory,'store.sqlite'),store=new StateStore(filename),second=new StateStore(filename),now=Date.now();
+ const put=(id,count,token)=>store.putSession({id,family_id:id,created_at_ms:now-1000,expires_at_ms:now+86400000,state:'READY',agent_count:count,participants:[],prepared_pool:true,provisioned_at_ms:now-500},token,'c'.repeat(64));
+ try{
+  put('1'.repeat(32),12,'1'.repeat(64));put('2'.repeat(32),12,'2'.repeat(64));
+  assert.throws(()=>store.authenticate('1'.repeat(64)),/SESSION_REQUIRED/);
+  const a=store.claimPreparedSession('a'.repeat(64),null,6,{intervalMs:0}),b=second.claimPreparedSession('b'.repeat(64),null,12,{intervalMs:0});
+  assert.notEqual(a.session.id,b.session.id);assert.equal(a.session.requested_agent_count,6);assert.equal(a.session.agent_count,12);
+  assert.throws(()=>store.authenticate(a.session.id==='1'.repeat(32)?'1'.repeat(64):'2'.repeat(64)),/SESSION_EXPIRED/);
+  assert.equal(store.claimPreparedSession('d'.repeat(64),null,12,{intervalMs:0}),undefined);
+  assert.throws(()=>store.switchSession(a.session,b.session.id),/SESSION_OWNER_SCOPE_REQUIRED/);
+  put('3'.repeat(32),3,'3'.repeat(64));
+  const next=store.claimPreparedSession('a'.repeat(64),a.session,3,{intervalMs:0});assert.equal(next.session.family_id,a.session.id);assert.equal(store.switchSession(a.session,next.session.id).session.id,next.session.id);
+ }finally{second.close();store.close();rmSync(directory,{recursive:true,force:true});}
+});
+
+test('a prepared pool retains visitor rate limits and cannot claim unfinished or expiring wallets',()=>{
+ const directory=mkdtempSync(path.join(tmpdir(),'ach-prepared-admission-')),store=new StateStore(path.join(directory,'store.sqlite')),now=Date.now();
+ try{
+  store.putSession({id:'a'.repeat(32),created_at_ms:now,expires_at_ms:now+86400000,state:'READY',agent_count:3},'a'.repeat(64),'a'.repeat(64));
+  const standby={id:'b'.repeat(32),created_at_ms:now,expires_at_ms:now+86400000,state:'PROVISIONING',agent_count:3,prepared_pool:true};store.putSession(standby,'b'.repeat(64),'c'.repeat(64));
+  assert.equal(store.claimPreparedSession('b'.repeat(64),null,3),undefined);
+  standby.state='READY';store.updateSession(standby);
+  assert.throws(()=>store.claimPreparedSession('a'.repeat(64),null,3,{intervalMs:10000}),/WORKSPACE_RATE_LIMITED/);
+  assert.throws(()=>store.claimPreparedSession('a'.repeat(64),null,3,{intervalMs:0,ipLimit:1}),/FREE_SESSION_QUOTA_REACHED/);
+  standby.expires_at_ms=now+30000;store.updateSession(standby);store.db.prepare('UPDATE sessions SET expires_at=? WHERE id=?').run(standby.expires_at_ms,standby.id);
+  assert.equal(store.claimPreparedSession('b'.repeat(64),null,3),undefined);
+ }finally{store.close();rmSync(directory,{recursive:true,force:true});}
 });
 
 test('hosted owner identity files cannot select another wallet or deployment namespace',async()=>{

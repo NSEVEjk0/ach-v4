@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import path from 'node:path';
-import { v4Digest } from '../../packages/client/dist/v4.js';
+import { v4Digest,v4OperationSigner } from '../../packages/client/dist/v4.js';
 import {randomBytes,createCipheriv,createDecipheriv}from 'node:crypto';
 export class StateStore {
   constructor(filename,{sealingKey}={}) {
@@ -16,19 +16,28 @@ export class StateStore {
       CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,session_id TEXT,request_hash TEXT NOT NULL,state TEXT NOT NULL,data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS planner_attempts(job_id TEXT PRIMARY KEY REFERENCES jobs(id),requests_used INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS operations(id TEXT PRIMARY KEY,data TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS operations_signer ON operations(json_extract(data,'$.signer_id'));
       CREATE TABLE IF NOT EXISTS events(sequence INTEGER PRIMARY KEY AUTOINCREMENT,session_id TEXT NOT NULL,at_ms INTEGER,kind TEXT,reference TEXT,data TEXT);
       CREATE TABLE IF NOT EXISTS sponsor_days(day TEXT PRIMARY KEY,sessions INTEGER NOT NULL,native_reserved TEXT NOT NULL);`);
   }
   close(){this.db.close();}
   async get(id){const row=this.db.prepare('SELECT data FROM operations WHERE id=?').get(id);return row?JSON.parse(row.data):undefined;}
   async put(op){this.db.prepare('INSERT INTO operations VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(op.id,JSON.stringify(op));}
+  async latestSignerOperation(accountId,publicKey){
+    let latest,nonce=-1n;
+    for(const row of this.db.prepare("SELECT data FROM operations WHERE json_extract(data,'$.signer_id')=? ORDER BY rowid").all(accountId)){
+      const op=JSON.parse(row.data),info=v4OperationSigner(op);
+      if(info?.public_key===publicKey&&info.nonce>=nonce){latest=op;nonce=info.nonce;}
+    }
+    return latest;
+  }
   ownerOperations(accounts){
     const owners=new Set(accounts);
     return this.db.prepare("SELECT data FROM operations WHERE id LIKE 'withdraw:%' OR id LIKE 'deposit:%' OR id LIKE 'recovery:%' OR id LIKE 'revoke-%'").all().map(r=>JSON.parse(r.data)).filter(op=>owners.has(op.signer_id)).map(op=>({id:op.id,account_id:op.signer_id,state:op.state,tx_hash:op.tx_hash,evidence:op.result?.evidence??null,value:op.result?.value??null,amount:op.amount??null,created_at_ms:op.created_at_ms??null}));
   }
   putSession(session,token,ipHash){this.db.prepare('INSERT INTO sessions VALUES(?,?,?,?,?,?)').run(session.id,v4Digest(token),ipHash,session.created_at_ms,session.expires_at_ms,JSON.stringify(session));}
   session(id){const row=this.db.prepare('SELECT data FROM sessions WHERE id=?').get(id);return row?JSON.parse(row.data):undefined;}
-  authenticate(token,now=Date.now()){if(!token||!/^[a-f\d]{64}$/.test(token))throw new Error('SESSION_REQUIRED');const hash=v4Digest(token),row=this.db.prepare('SELECT data,expires_at FROM sessions WHERE token_hash=? UNION ALL SELECT s.data,s.expires_at FROM session_access a JOIN sessions s ON s.id=a.session_id WHERE a.token_hash=? LIMIT 1').get(hash,hash);if(!row||row.expires_at<=now)throw new Error('SESSION_EXPIRED');return JSON.parse(row.data);}
+  authenticate(token,now=Date.now()){if(!token||!/^[a-f\d]{64}$/.test(token))throw new Error('SESSION_REQUIRED');const hash=v4Digest(token),row=this.db.prepare('SELECT data,expires_at FROM sessions WHERE token_hash=? UNION ALL SELECT s.data,s.expires_at FROM session_access a JOIN sessions s ON s.id=a.session_id WHERE a.token_hash=? LIMIT 1').get(hash,hash);if(!row||row.expires_at<=now)throw new Error('SESSION_EXPIRED');const session=JSON.parse(row.data);if(session.prepared_pool)throw new Error('SESSION_REQUIRED');return session;}
   workspaceSessions(current,now=Date.now()){
     const owner=this.session(current.id);if(!owner||owner.expires_at_ms<=now)throw new Error('SESSION_EXPIRED');
     const family=owner.family_id??owner.id;
@@ -137,7 +146,28 @@ export class StateStore {
       this.db.prepare('INSERT INTO sponsor_days VALUES(?,?,?) ON CONFLICT(day)DO UPDATE SET sessions=excluded.sessions,native_reserved=excluded.native_reserved').run(day,row.sessions+1,(BigInt(row.native_reserved)+BigInt(perSessionNative)).toString());this.db.exec('COMMIT');
     }catch(e){this.db.exec('ROLLBACK');throw e;}
   }
-  pendingSessions(){return this.db.prepare('SELECT data FROM sessions WHERE expires_at>?').all(Date.now()).map(r=>JSON.parse(r.data));}
+  pendingSessions({includePrepared=false}={}){return this.db.prepare("SELECT data FROM sessions WHERE expires_at>? AND (? OR COALESCE(json_extract(data,'$.prepared_pool'),0)=0)").all(Date.now(),includePrepared?1:0).map(r=>JSON.parse(r.data));}
+  claimPreparedSession(ipHash,parent,agentCount,{ipLimit=null,intervalMs=10000}={}){
+    if(!/^[a-f\d]{64}$/.test(ipHash)||!Number.isSafeInteger(agentCount)||agentCount<3||agentCount>12||ipLimit!==null&&(!Number.isSafeInteger(ipLimit)||ipLimit<1)||!Number.isSafeInteger(intervalMs)||intervalMs<0)throw new Error('INVALID_SPONSOR_LIMITS');
+    const now=Date.now(),day=new Date(now).toISOString().slice(0,10);
+    this.db.exec('BEGIN IMMEDIATE');
+    try{
+      const row=this.db.prepare("SELECT data FROM sessions WHERE expires_at>? AND json_extract(data,'$.prepared_pool')=1 AND json_extract(data,'$.state')='READY' AND json_extract(data,'$.agent_count')>=? ORDER BY json_extract(data,'$.agent_count'),created_at DESC LIMIT 1").get(now+3600000,agentCount);
+      if(!row){this.db.exec('COMMIT');return;}
+      const count=this.db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE ip_hash=? AND created_at>=?').get(ipHash,Date.parse(day+'T00:00:00Z')).n;
+      const latest=this.db.prepare('SELECT MAX(created_at) AS at_ms FROM sessions WHERE ip_hash=?').get(ipHash).at_ms;
+      if(latest!==null&&now-latest<intervalMs)throw new Error('WORKSPACE_RATE_LIMITED');
+      if(ipLimit!==null&&count>=ipLimit)throw new Error('FREE_SESSION_QUOTA_REACHED');
+      const previous=parent?this.session(parent.id):null;
+      if(parent&&(!previous||previous.expires_at_ms<=now))throw new Error('SESSION_EXPIRED');
+      const session=JSON.parse(row.data),token=randomBytes(32).toString('hex');
+      delete session.prepared_pool;
+      session.wallet_prepared_at_ms=session.provisioned_at_ms;
+      session.created_at_ms=now;session.requested_agent_count=agentCount;session.family_id=previous?(previous.family_id??previous.id):session.id;
+      this.db.prepare('UPDATE sessions SET token_hash=?,ip_hash=?,created_at=?,data=? WHERE id=?').run(v4Digest(token),ipHash,now,JSON.stringify(session),session.id);
+      this.db.exec('COMMIT');return{session,token};
+    }catch(error){this.db.exec('ROLLBACK');throw error;}
+  }
   ensureSessionReservation(session,{maxNative,perSessionNative}){
     const required=BigInt(perSessionNative);
     // The single session created by the pre-release sponsor reserved 0.4 NEAR.

@@ -10,7 +10,7 @@ export interface SealedResult {kind:'encrypted-result';request_id:string;nonce:s
 export interface SessionEvent {sequence:number;at_ms:number;kind:string;reference:string;data:Record<string,unknown>}
 export interface EventPage {items:SessionEvent[];next_cursor:number|null}
 export interface Snapshot {
- session:{id:string;participants:Participant[];initial_balance:string;agent_count?:number;judge_testing?:boolean;expires_at_ms:number;state?:string;setup_progress?:{agent?:string;stage:string;completed?:number;total?:number}|null;clearing_policy?:{mode:'manual'|'automatic'}};
+ session:{id:string;participants:Participant[];initial_balance:string;agent_count?:number;requested_agent_count?:number;judge_testing?:boolean;expires_at_ms:number;state?:string;setup_progress?:{agent?:string;stage:string;completed?:number;total?:number}|null;clearing_policy?:{mode:'manual'|'automatic'}};
  deployment:{protocol_version:4;workflow_revision?:number;network:string;vault:string;token:string;decimals:number;rpc_url:string;rpc_urls?:string[]};
  balances:Balance[];invoices:Invoice[];rounds:Round[];
  jobs:{id:string;state:string;result:Artifact|null;sealed_result?:SealedResult|null;error:string|null}[];

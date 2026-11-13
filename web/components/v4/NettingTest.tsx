@@ -6,7 +6,7 @@ import type {Snapshot} from '../../lib/v4';
 import {PanelHeading,State} from './Interface';
 
 export default function NettingTest({data,pending,stale,onNewWorkspace,onRefresh,onRound}:{data:Snapshot;pending:boolean;stale:boolean;onNewWorkspace:(count:number)=>void;onRefresh:()=>void;onRound:(id:string)=>void}){
- const[count,setCount]=useState(data.session.agent_count??3),[privacy,setPrivacy]=useState<'public'|'private'>('public'),[sending,setSending]=useState(false),[error,setError]=useState('');
+ const[count,setCount]=useState(data.session.requested_agent_count??data.session.agent_count??3),[privacy,setPrivacy]=useState<'public'|'private'>('public'),[sending,setSending]=useState(false),[error,setError]=useState('');
  const operation=useRef<{id:string;payload:string}|null>(null);
  const jobs=data.test_jobs??[],active=jobs.some(j=>['STARTED','WAITING'].includes(j.state)),working=data.jobs.some(j=>['STARTED','WAITING'].includes(j.state));
  const needsWallets=!data.session.judge_testing||count>data.session.participants.length;
@@ -14,7 +14,7 @@ export default function NettingTest({data,pending,stale,onNewWorkspace,onRefresh
  // A fresh workspace does not use this workspace's balances or private worker.
  // Keep those checks for starting a round, and preserve all in-flight guards.
  const disabled=pending||sending||active||working||!needsWallets&&(stale||privacy==='private'&&!data.privacy.enabled);
- useEffect(()=>{setCount(data.session.agent_count??3);operation.current=null;setError('');},[data.session.id]);
+ useEffect(()=>{setCount(data.session.requested_agent_count??data.session.agent_count??3);operation.current=null;setError('');},[data.session.id]);
  useEffect(()=>{if(operation.current&&jobs.some(j=>j.id==='test-netting-'+operation.current?.id&&['COMPLETE','FAILED'].includes(j.state)))operation.current=null;},[jobs]);
  async function run(){
   setSending(true);setError('');
@@ -34,7 +34,7 @@ export default function NettingTest({data,pending,stale,onNewWorkspace,onRefresh
   </div>
   <p className="form-hint">{privacy==='public'?`${count} distinct agents agree to ${bills} synthetic bills. Their payments offset around a cycle, leaving 0.02 tUSDC to settle.`:`${count} distinct agents sign ${bills} encrypted synthetic bills. OutLayer verifies the signatures and nets the complete funded group in one run. Participants and final net movements remain public.`}</p>
   {privacy==='private'&&count>6&&<p className="form-hint">This test uses six bills across separate payment chains to include every agent. At 12 agents, each pair has one bill, so the round has no offsetting payments.</p>}
-  <p className="form-hint">Round limits: 12 participants, 48 public bills or 6 private bills. Fresh extra test wallets receive sponsored tUSDC. You can reopen earlier workspaces from Settings.</p>
+  <p className="form-hint">Round limits: 12 participants, 48 public bills or 6 private bills. New larger workspaces fund every wallet with 5 tUSDC. You can reopen earlier workspaces from Settings.</p>
   {privacy==='private'&&!data.privacy.enabled&&<p role="status" className="form-hint">Private computation is reconnecting. Your private selection is retained.</p>}
   {error&&<p className="inline-error" role="alert">{error}</p>}
   {!!jobs.length&&<div className="netting-test-results" aria-live="polite">{jobs.slice(-3).reverse().map(job=><article className="netting-test-result" key={job.id}>
